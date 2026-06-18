@@ -1,62 +1,66 @@
 """
-Ancient Tamil Inscription Translator — Segmentation Module
-Segments a stone inscription photo into individual word/character regions.
+segmentation.py — Word-level region extraction for ancient Tamil inscriptions.
 
-Key insight: heavy Gaussian blur FIRST to kill stone texture noise,
-THEN threshold — so only actual carved characters remain in the binary.
+Pipeline (dark-channel extraction approach):
+  1  Resize to max 1200px width
+  2  Grayscale → invert  (dark carvings become bright)
+  3  Strong Gaussian blur (21×21) to kill stone grain
+  4  CLAHE (clipLimit=3.0, grid=8×8) to enhance contrast
+  5  Fixed threshold at 127; auto-raise if foreground > 40 / 60 %
+  6  Zero out 30px border
+  7  Morphological opening (Ellipse 3×3, iter=2) — removes speckles
+  8  Dilation (Rect kernel, size depends on image width) — groups strokes
+  9  findContours + strict size / border filters
+  9b Remove overlapping boxes (keep larger)
+  9c Re-assign lines using y-centre (35px tolerance)
+  9d Sort by line then x
 """
 
-from typing import List, Dict
-from pathlib import Path
+from __future__ import annotations
 
-import numpy as np
+import os
+from typing import Dict, List, Optional
+
 import cv2
+import numpy as np
 
-DEBUG_DIR  = Path(r"E:\TAMIL SCRIPT VERSION 2\debug")
-DEBUG_PATH = Path(r"E:\TAMIL SCRIPT VERSION 2\debug_segmentation.png")
+# ─────────────────────────────────────────────
+#  Optional debug image saving
+# ─────────────────────────────────────────────
+_DEBUG_DIR: Optional[str] = os.environ.get("SEG_DEBUG_DIR", "")
+
+
+def _save_debug_step(filename: str, img: np.ndarray) -> None:
+    if not _DEBUG_DIR:
+        return
+    os.makedirs(_DEBUG_DIR, exist_ok=True)
+    cv2.imwrite(os.path.join(_DEBUG_DIR, filename), img)
 
 
 # ─────────────────────────────────────────────
-#  INTERNAL HELPERS
+#  Helpers
 # ─────────────────────────────────────────────
-def _save_debug_step(name: str, img: np.ndarray):
-    """Save an intermediate pipeline image to the debug folder."""
-    try:
-        DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-        path = DEBUG_DIR / name
-        cv2.imwrite(str(path), img)
-    except Exception as e:
-        print(f"[DEBUG] Could not save {name}: {e}")
-
-
-def _resize_to_max(image: np.ndarray, max_width: int = 1000) -> np.ndarray:
-    """Downscale so width ≤ max_width, preserving aspect ratio."""
-    h, w = image.shape[:2]
+def _resize_to_max(img: np.ndarray, max_width: int) -> np.ndarray:
+    h, w = img.shape[:2]
     if w <= max_width:
-        return image
-    scale  = max_width / w
-    new_w  = max_width
-    new_h  = int(h * scale)
-    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        return img.copy()
+    scale = max_width / w
+    return cv2.resize(img, (max_width, int(h * scale)), interpolation=cv2.INTER_AREA)
 
 
 # ─────────────────────────────────────────────
-#  MAIN FUNCTION
+#  Public API
 # ─────────────────────────────────────────────
 def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     """
-    Segment an inscription image into word/character regions.
+    Segment an inscription image into word-level bounding boxes.
 
-    Parameters
-    ----------
-    image_bgr : np.ndarray
-        Input image in BGR format (as loaded by OpenCV).
+    Args:
+        image_bgr: BGR numpy array (uint8).
 
-    Returns
-    -------
-    List[Dict]
-        Reading-order list of region dicts, each containing:
-            id    : int         — 1-indexed reading-order position
+    Returns:
+        List of dicts, each with:
+            id    : int          — 1-indexed sequential id
             x, y  : int         — top-left corner (original image coords)
             w, h  : int         — width / height (original image coords)
             line  : int         — 1-indexed line number
@@ -116,9 +120,9 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         
     _save_debug_step("05_binary.jpg", binary)
 
-    # ── STEP 6 - Adaptive border rejection
+    # ── STEP 6 - Zero out 30px border
     img_h, img_w = image_resized.shape[:2]
-    border = max(5, min(img_w, img_h) // 30)
+    border = 30
     binary[:border, :] = 0
     binary[-border:, :] = 0
     binary[:, :border] = 0
@@ -129,7 +133,7 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     opened = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=2)
     _save_debug_step("06_opened.jpg", opened)
 
-    # ── STEP 8 - Adaptive dilation kernel based on image width
+    # ── STEP 8 - Dilation — connect strokes without merging words
     if img_w < 300:
         k_w, k_h = 3, 2
         min_w, min_h = 10, 10
@@ -158,19 +162,19 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         x, y, w, h = cv2.boundingRect(cnt)
         area = w * h
 
-        # Reject border-touching contours (adaptive border margin)
-        if x < border or y < border:
+        # Reject border-touching contours (30px margin)
+        if x < 30 or y < 30:
             continue
-        if (x + w) > (img_w - border):
+        if (x + w) > (img_w - 30):
             continue
-        if (y + h) > (img_h - border):
+        if (y + h) > (img_h - 30):
             continue
 
         # Reject if too tall (more than 1 row height = img_h/6)
         if h > img_h / 6:
             continue
 
-        # Reject if too wide (more than 2 words wide = img_w/6)  
+        # Reject if too wide (more than 2 words wide = img_w/6)
         if w > img_w / 6:
             continue
 
@@ -191,8 +195,8 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     print(f"[SEG] Before overlap removal: {len(regions_work)}")
 
     # ── STEP 9b - Remove overlapping boxes (keep larger)
-    def remove_overlaps(regions, overlap_thresh=0.3):
-        keep = []
+    def remove_overlaps(regions: List[Dict], overlap_thresh: float = 0.3) -> List[Dict]:
+        keep: List[Dict] = []
         regions_sorted = sorted(regions, key=lambda r: r['w'] * r['h'], reverse=True)
         for r in regions_sorted:
             rx1, ry1, rx2, ry2 = r['x'], r['y'], r['x'] + r['w'], r['y'] + r['h']
@@ -227,7 +231,7 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
 
     print(f"[SEG] Lines detected: {max(r['line'] for r in regions_work) if regions_work else 0}")
 
-    # ── STEP 9d - Re-number ids sequentially, sort by line then x
+    # ── STEP 9d - Sort by line then x
     regions_work.sort(key=lambda r: (r['line'], r['x']))
     for i, r in enumerate(regions_work):
         r['_id'] = i + 1
@@ -236,12 +240,12 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     # Color palette for line-number color coding
     LINE_COLORS = [
         (0,   0,   255),   # line 1 — red
-        (0,   200,  0),    # line 2 — green
-        (255,  0,   0),    # line 3 — blue
+        (0,   200,   0),   # line 2 — green
+        (255,   0,   0),   # line 3 — blue
         (0,   200, 200),   # line 4 — yellow
-        (200,  0,  200),   # line 5 — magenta
+        (200,   0, 200),   # line 5 — magenta
         (0,   165, 255),   # line 6 — orange
-        (128,  0,  128),   # line 7 — purple
+        (128,   0, 128),   # line 7 — purple
         (0,   128, 128),   # line 8 — teal
     ]
 

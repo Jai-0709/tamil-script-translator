@@ -1,8 +1,9 @@
-﻿frontend/node_modules/
+frontend/node_modules/
 backend/__pycache__/
 *.pyc
 venv/
 .env
+!.env.production
 debug/
 TAMIL SCRIPT DATASET/
 testing 1.jpg
