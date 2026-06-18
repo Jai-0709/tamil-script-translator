@@ -115,6 +115,10 @@ def _ensure_loaded():
 
     # Load model
     _model, _num_classes = _load_model()
+    try:
+        torch.set_num_threads(1)
+    except Exception:
+        pass
     _model_loaded = True
 
 
@@ -185,9 +189,9 @@ def classify_crop(crop: np.ndarray) -> Dict:
 
 
 @torch.no_grad()
-def classify_batch(crops: List[np.ndarray]) -> List[Dict]:
+def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
     """
-    Classify a list of BGR image crops in a single forward pass.
+    Classify a list of BGR image crops in mini-batches to keep memory usage low.
 
     Returns
     -------
@@ -199,19 +203,22 @@ def classify_batch(crops: List[np.ndarray]) -> List[Dict]:
     if not crops:
         return []
 
-    tensors = torch.stack([_crop_to_tensor(c) for c in crops]).to(DEVICE)
-    logits  = _model(tensors)
-    probs   = F.softmax(logits, dim=1)
-    confs, pred_idxs = probs.max(dim=1)
-
     results = []
-    for pred_idx, conf in zip(pred_idxs.tolist(), confs.tolist()):
-        class_id_str = _idx_to_class.get(int(pred_idx), str(int(pred_idx)))
-        modern_tamil = _label_map.get(class_id_str, class_id_str)
-        results.append({
-            "class_id":    class_id_str,
-            "modern_tamil": modern_tamil,
-            "confidence":  round(float(conf), 4),
-        })
+    # Process in batches to prevent Out of Memory errors on resource-constrained containers
+    for i in range(0, len(crops), batch_size):
+        batch_crops = crops[i : i + batch_size]
+        tensors = torch.stack([_crop_to_tensor(c) for c in batch_crops]).to(DEVICE)
+        logits  = _model(tensors)
+        probs   = F.softmax(logits, dim=1)
+        confs, pred_idxs = probs.max(dim=1)
+
+        for pred_idx, conf in zip(pred_idxs.tolist(), confs.tolist()):
+            class_id_str = _idx_to_class.get(int(pred_idx), str(int(pred_idx)))
+            modern_tamil = _label_map.get(class_id_str, class_id_str)
+            results.append({
+                "class_id":    class_id_str,
+                "modern_tamil": modern_tamil,
+                "confidence":  round(float(conf), 4),
+            })
 
     return results
