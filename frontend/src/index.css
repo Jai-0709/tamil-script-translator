@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Tamil:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary:    #070709;
+  --bg-card:       #0e0e12;
+  --bg-card-2:     #141418;
+  --bg-card-3:     #1a1a20;
+  --accent:        #f97316;
+  --accent-hover:  #ea6a0a;
+  --accent-muted:  rgba(249, 115, 22, 0.12);
+  --border:        #1e1e26;
+  --border-light:  #2a2a34;
+  --text-primary:  #f0f0f0;
+  --text-secondary:#7a7a8a;
+  --text-muted:    #444450;
+  --green:         #4ade80;
+  --yellow:        #facc15;
+  --red:           #f87171;
+  --header-h:      56px;
+  --toolbar-h:     64px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+body {
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a34; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a48; }
+
+/* ── Tamil font ─────────────────────────────── */
+.tamil-text { font-family: 'Noto Sans Tamil', sans-serif; }
+
+/* ── Animations ─────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes pulseRing {
+  0%,100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.25); }
+  50%      { box-shadow: 0 0 0 8px rgba(249,115,22,0);  }
+}
+
+.fade-up    { animation: fadeUp 0.35s ease both; }
+.spinner    { animation: spin 0.85s linear infinite; }
+.pulse-ring { animation: pulseRing 2s infinite; }

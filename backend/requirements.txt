@@ -1,0 +1,22 @@
+# Ancient Tamil Inscription Translator — Backend Dependencies
+
+# Deep Learning
+torch
+torchvision
+torchaudio
+efficientnet_pytorch
+
+# Image Processing
+Pillow
+opencv-python
+albumentations
+
+# API
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Utilities
+numpy
+matplotlib
+scikit-learn
