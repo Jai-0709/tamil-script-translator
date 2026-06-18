@@ -10,7 +10,7 @@
 | Component | Status | URL |
 |-----------|--------|-----|
 | Backend (FastAPI + ML Model) | **LIVE** ✅ | https://tamil-script-translator.onrender.com |
-| Frontend (React App) | Needs deployment (Step 3) | — |
+| Frontend (React App) | **LIVE** ✅ | https://tamil-script-translator.vercel.app |
 
 ---
 
