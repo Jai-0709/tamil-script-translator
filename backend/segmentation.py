@@ -165,26 +165,29 @@ def _compute_adaptive_params(img_w: int, img_h: int) -> dict:
     Compute all morphological and filter parameters based on image size.
     Avoids hardcoded values that break on different inscription photos.
     """
-    # Typical stone inscriptions have 20-50 characters per line
-    # and 5-15 rows — use conservative estimates
     estimated_char_w = max(15, img_w // 35)
     estimated_char_h = max(15, img_h // 12)
 
-    # Dilation kernel: wide enough to connect strokes inside one character,
-    # but NOT so wide it merges two adjacent characters
-    k_w = max(4, int(estimated_char_w * 0.4))
-    k_h = max(2, int(estimated_char_h * 0.15))
+    # Dilation kernel: cap k_w at 6 to prevent merging adjacent characters
+    k_w = min(6, max(3, int(estimated_char_w * 0.25)))
+    k_h = min(2, max(2, int(estimated_char_h * 0.08)))
 
-    # Minimum character size filters
-    min_w = max(8,  int(estimated_char_w * 0.25))
-    min_h = max(8,  int(estimated_char_h * 0.2))
-    min_area = min_w * min_h
+    # Minimum character size filters to ignore tiny noise speckles
+    if img_w < 300:
+        min_w, min_h = 10, 10
+        min_area = 100
+    elif img_w < 600:
+        min_w, min_h = 15, 15
+        min_area = 300
+    else:
+        min_w, min_h = 22, 22
+        min_area = 500
 
-    # Maximum character size filters (reject huge blobs = background cracks)
+    # Maximum character size filters (reject huge blobs)
     max_w = int(img_w * 0.25)
     max_h = int(img_h * 0.40)
 
-    # Border exclusion zone (slightly larger than original 30px fixed value)
+    # Border exclusion zone
     border = max(20, int(min(img_w, img_h) * 0.025))
 
     # Line gap for clustering
