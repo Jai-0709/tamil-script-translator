@@ -21,13 +21,16 @@ This will automatically create a virtual environment, install python libraries, 
 If you prefer to run the setup manually in your terminal, open PowerShell or Command Prompt in the project root directory and run:
 
 1. **Create and activate a Python virtual environment:**
-   ```powershell
-   # Create environment
-   python -m venv venv
-   
-   # Activate environment
-   venv\Scripts\activate.bat
-   ```
+   * **If using PowerShell (default in VS Code terminal):**
+     ```powershell
+     python -m venv venv
+     .\venv\Scripts\Activate.ps1
+     ```
+   * **If using Command Prompt (cmd):**
+     ```cmd
+     python -m venv venv
+     venv\Scripts\activate.bat
+     ```
 
 2. **Install Backend Dependencies:**
    ```powershell
@@ -52,7 +55,10 @@ To run the application, you need to start **both** the Backend and Frontend serv
 You can start the backend by either double-clicking **`run_backend.bat`** or running these commands in a new terminal:
 ```powershell
 # 1. Activate the environment
-venv\Scripts\activate.bat
+# For PowerShell:
+.\venv\Scripts\Activate.ps1
+# For Command Prompt (CMD):
+# venv\Scripts\activate.bat
 
 # 2. Go to the backend folder and start uvicorn
 cd backend
