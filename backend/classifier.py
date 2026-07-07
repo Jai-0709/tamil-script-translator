@@ -44,33 +44,51 @@ _transform = transforms.Compose([
 # ─────────────────────────────────────────────
 #  MODEL LOADING (at import time)
 # ─────────────────────────────────────────────
-def _load_model() -> nn.Module:
-    ckpt  = torch.load(str(MODEL_PATH), map_location="cpu")
+def _load_model():
+    ckpt  = torch.load(str(MODEL_PATH), map_location="cpu", weights_only=False)
     state = ckpt.get("model_state_dict", ckpt)
 
-    # Infer num_classes from checkpoint
+    # ── Detect architecture by inspecting checkpoint keys ──────────────────
+    # torchvision EfficientNet uses "features.*" / "classifier.*"
+    # efficientnet_pytorch uses "_conv_stem.*" / "_fc.*"
+    is_torchvision = any(k.startswith("features.") for k in state.keys())
+
+    # ── Infer num_classes from checkpoint ──────────────────────────────────
     if "num_classes" in ckpt:
         num_classes = ckpt["num_classes"]
-    elif "_fc.weight" in state:
-        num_classes = state["_fc.weight"].shape[0]
-    elif "classifier.1.weight" in state:
+    elif is_torchvision and "classifier.1.weight" in state:
         num_classes = state["classifier.1.weight"].shape[0]
+    elif not is_torchvision and "_fc.weight" in state:
+        num_classes = state["_fc.weight"].shape[0]
     else:
         raise KeyError("Cannot infer num_classes from checkpoint.")
 
-    try:
-        from efficientnet_pytorch import EfficientNet
-        model = EfficientNet.from_pretrained("efficientnet-b0")
-        model._fc = nn.Linear(model._fc.in_features, num_classes)
-    except ImportError:
+    print(f"[CLS] Checkpoint format: {'torchvision' if is_torchvision else 'efficientnet_pytorch'}")
+    print(f"[CLS] num_classes: {num_classes}")
+
+    # ── Build matching model architecture ──────────────────────────────────
+    if is_torchvision:
+        # Saved with torchvision.models.efficientnet_b0 (Kaggle training script)
         model = models.efficientnet_b0(weights=None)
         model.classifier[1] = nn.Linear(
             model.classifier[1].in_features, num_classes
         )
+    else:
+        # Saved with efficientnet_pytorch library (legacy local training)
+        try:
+            from efficientnet_pytorch import EfficientNet
+            model = EfficientNet.from_pretrained("efficientnet-b0")
+            model._fc = nn.Linear(model._fc.in_features, num_classes)
+        except ImportError:
+            raise RuntimeError(
+                "Checkpoint was trained with efficientnet_pytorch but it is "
+                "not installed. Run: pip install efficientnet_pytorch"
+            )
 
     model.load_state_dict(state)
     model.to(DEVICE)
     model.eval()
+    print(f"[CLS] Model loaded successfully ({num_classes} classes).")
     return model, num_classes
 
 
