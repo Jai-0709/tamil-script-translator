@@ -173,30 +173,7 @@ export default function OriginalImageViewer({
     return () => obs.disconnect()
   }, [drawSpotlight, drawZoom])
 
-  // ── Auto-scroll so highlighted character is centred on screen ────────────
-  useEffect(() => {
-    if (!hoveredWordId || !words.length || !imageWidth || !imageHeight) return
-    const word = words.find(w => w.id === hoveredWordId)
-    if (!word || !imgRef.current || !containerRef.current) return
-    const img = imgRef.current
-    if (img.naturalWidth === 0) return
-
-    const { height: renderedH } = img.getBoundingClientRect()
-    const scaleY   = renderedH / imageHeight
-    const charMidY = (word.y + word.h / 2) * scaleY
-
-    let el = containerRef.current.parentElement
-    while (el) {
-      if (el.scrollHeight > el.clientHeight) {
-        const containerTop = containerRef.current.getBoundingClientRect().top
-        const elTop        = el.getBoundingClientRect().top
-        const relTop       = containerTop - elTop + el.scrollTop
-        el.scrollTo({ top: relTop + charMidY - el.clientHeight / 2, behavior: 'smooth' })
-        break
-      }
-      el = el.parentElement
-    }
-  }, [hoveredWordId, words, imageWidth, imageHeight])
+  // Auto-scroll removed: keeping Detection View stationary while highlighting
 
   // ── Mouse interaction on original image ───────────────────────────────────
   function handleMouseMove(e) {
