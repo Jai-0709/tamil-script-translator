@@ -1,12 +1,15 @@
 import { useState } from 'react'
 
-export default function SentenceOutput({ fullSentence, wordCount, lineCount }) {
-  const [copied, setCopied] = useState(false)
-  const [fontSize, setFontSize] = useState(24) // default 24px
+export default function SentenceOutput({ fullSentence, romanSentence, wordCount, lineCount }) {
+  const [copied, setCopied]         = useState(false)
+  const [fontSize, setFontSize]     = useState(24)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [showRoman, setShowRoman]   = useState(false)   // Tamil | Roman toggle
+
+  const activeText = showRoman ? (romanSentence || fullSentence) : fullSentence
 
   function copy() {
-    navigator.clipboard.writeText(fullSentence).then(() => {
+    navigator.clipboard.writeText(activeText).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })
@@ -48,6 +51,46 @@ export default function SentenceOutput({ fullSentence, wordCount, lineCount }) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+
+          {/* ── Tamil | Roman toggle ── */}
+          {!isCollapsed && romanSentence && (
+            <div style={{
+              display: 'flex', alignItems: 'center',
+              background: 'var(--bg-card-3)', borderRadius: 6,
+              border: '1px solid var(--border)', overflow: 'hidden',
+            }}>
+              <button
+                onClick={() => setShowRoman(false)}
+                style={{
+                  background: !showRoman ? 'var(--accent)' : 'none',
+                  border: 'none',
+                  color: !showRoman ? '#fff' : 'var(--text-secondary)',
+                  fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                  padding: '3px 9px',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                title="Show Tamil script"
+              >
+                Tamil
+              </button>
+              <button
+                onClick={() => setShowRoman(true)}
+                style={{
+                  background: showRoman ? 'var(--accent)' : 'none',
+                  border: 'none',
+                  borderLeft: '1px solid var(--border)',
+                  color: showRoman ? '#fff' : 'var(--text-secondary)',
+                  fontSize: 10, fontWeight: 600, cursor: 'pointer',
+                  padding: '3px 9px',
+                  transition: 'background 0.15s, color 0.15s',
+                }}
+                title="Show Roman/phonetic transliteration (ISO-15919)"
+              >
+                Roman
+              </button>
+            </div>
+          )}
+
           {/* Font Size controls */}
           {!isCollapsed && (
             <div style={{
@@ -123,22 +166,38 @@ export default function SentenceOutput({ fullSentence, wordCount, lineCount }) {
         </div>
       </div>
 
+      {/* Script label */}
+      {!isCollapsed && romanSentence && (
+        <div style={{
+          fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em',
+          textTransform: 'uppercase', marginBottom: 4,
+          display: 'flex', alignItems: 'center', gap: 4,
+        }}>
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: showRoman ? '#60a5fa' : '#f97316',
+            display: 'inline-block',
+          }}/>
+          {showRoman ? 'ISO-15919 Roman Transliteration (via Aksharamukha)' : 'Tamil Unicode Script'}
+        </div>
+      )}
+
       {/* Sentence text */}
       {!isCollapsed && (
-        <div style={{
-          maxHeight: '120px',
-          overflowY: 'auto',
-          paddingRight: 4,
-        }}>
-          <p className="tamil-text" style={{
-            fontSize: `${fontSize}px`,
-            fontWeight: 600,
-            color: 'var(--text-primary)',
-            lineHeight: 1.5,
-            wordBreak: 'break-word',
-            transition: 'font-size 0.15s ease-out',
-          }}>
-            {fullSentence || '—'}
+        <div style={{ maxHeight: '120px', overflowY: 'auto', paddingRight: 4 }}>
+          <p
+            className={showRoman ? '' : 'tamil-text'}
+            style={{
+              fontSize: showRoman ? Math.max(14, fontSize - 6) : `${fontSize}px`,
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              lineHeight: 1.6,
+              wordBreak: 'break-word',
+              transition: 'font-size 0.15s ease-out',
+              fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
+            }}
+          >
+            {activeText || '—'}
           </p>
         </div>
       )}

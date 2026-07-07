@@ -284,6 +284,7 @@ export default function App() {
           }}>
             <SentenceOutput
               fullSentence={apiResponse?.full_sentence || ""}
+              romanSentence={apiResponse?.roman_sentence || ""}
               wordCount={apiResponse?.word_count || 0}
               lineCount={apiResponse?.line_count || 0}
             />

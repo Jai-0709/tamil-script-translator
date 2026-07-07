@@ -8,7 +8,7 @@ Endpoints:
 
 import io
 import traceback
-from typing import List
+from typing import List, Optional
 
 import cv2
 import numpy as np
@@ -18,6 +18,26 @@ from pydantic import BaseModel
 
 from segmentation import segment_words
 import classifier
+
+# ── Aksharamukha transliteration (optional — graceful fallback if missing) ──
+try:
+    from aksharamukha import transliterate as _aksha
+    def _to_roman(text: str) -> str:
+        """Transliterate Tamil Unicode → ISO-15919 Roman phonetic."""
+        try:
+            return _aksha.process('Tamil', 'ISO', text)
+        except Exception:
+            return text
+    _AKSHA_AVAILABLE = True
+    print("[INFO] Aksharamukha loaded — Roman transliteration enabled.")
+except ImportError:
+    def _to_roman(text: str) -> str:
+        return text
+    _AKSHA_AVAILABLE = False
+    print("[WARN] aksharamukha not installed — Roman transliteration disabled.")
+
+# Unknown class label — shown as ? in UI
+_UNKNOWN_CLASS = "அறியப்படாதது"
 
 # ─────────────────────────────────────────────
 #  APP SETUP
@@ -59,15 +79,17 @@ class WordResult(BaseModel):
     modern_tamil: str
     confidence:   float
     line:         int
+    is_unknown:   bool = False   # True when model classified as "unknown"
 
 
 class TranslateResponse(BaseModel):
-    words:        List[WordResult]
-    full_sentence: str
-    word_count:   int
-    line_count:   int
-    image_width:  int
-    image_height: int
+    words:          List[WordResult]
+    full_sentence:  str
+    roman_sentence: str           # ISO-15919 romanized transliteration
+    word_count:     int
+    line_count:     int
+    image_width:    int
+    image_height:   int
 
 
 class BoundingBox(BaseModel):
@@ -174,6 +196,9 @@ async def translate(file: UploadFile = File(...)):
     # ── 4. Build response ────────────────────────────────────────────────
     words: List[WordResult] = []
     for region, cls_result in zip(regions, results):
+        tamil_char  = cls_result["modern_tamil"]
+        is_unknown  = (tamil_char == _UNKNOWN_CLASS)
+        display_char = "?" if is_unknown else tamil_char
         words.append(WordResult(
             id           = region["id"],
             x            = region["x"],
@@ -181,21 +206,24 @@ async def translate(file: UploadFile = File(...)):
             w            = region["w"],
             h            = region["h"],
             class_id     = cls_result["class_id"],
-            modern_tamil = cls_result["modern_tamil"],
+            modern_tamil = display_char,
             confidence   = cls_result["confidence"],
             line         = region["line"],
+            is_unknown   = is_unknown,
         ))
 
-    sentence   = _build_sentence(words)
-    line_count = max((w.line for w in words), default=0)
+    sentence      = _build_sentence(words)
+    roman_sentence = _to_roman(sentence)
+    line_count    = max((w.line for w in words), default=0)
 
     return TranslateResponse(
-        words         = words,
+        words          = words,
         full_sentence  = sentence,
-        word_count    = len(words),
-        line_count    = line_count,
-        image_width   = img_w,
-        image_height  = img_h,
+        roman_sentence = roman_sentence,
+        word_count     = len(words),
+        line_count     = line_count,
+        image_width    = img_w,
+        image_height   = img_h,
     )
 
 
