@@ -2,6 +2,7 @@ import { useState } from 'react'
 import axios from 'axios'
 import UploadZone from './components/UploadZone'
 import InscriptionCanvas from './components/InscriptionCanvas'
+import OriginalImageViewer from './components/OriginalImageViewer'
 import TranslationPanel from './components/TranslationPanel'
 import SentenceOutput from './components/SentenceOutput'
 import LoadingOverlay from './components/LoadingOverlay'
@@ -133,13 +134,15 @@ export default function App() {
         display: 'flex',
         overflow: 'hidden',
       }}>
-        {/* LEFT — canvas (58%) */}
+        {/* LEFT — canvas (58%) — vertically scrollable, images at natural size */}
         <div style={{
           width: '58%',
           display: 'flex',
           flexDirection: 'column',
           borderRight: '1px solid var(--border)',
-          overflow: 'hidden',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          background: 'var(--bg-primary)',
         }}>
           {/* Error banner */}
           {error && (
@@ -157,18 +160,13 @@ export default function App() {
             </div>
           )}
 
-          {/* ── TOP: Detection canvas (annotated image with boxes) ── */}
-          <div style={{
-            flex: '0 0 50%',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            borderBottom: '2px solid var(--border)',
-            background: 'var(--bg-primary)',
-          }}>
+          {/* ── PANEL 1: Detection canvas (annotated image with boxes) ── */}
+          <div style={{ flexShrink: 0 }}>
             {/* Section label */}
             <div style={{
-              flexShrink: 0,
+              position: 'sticky',
+              top: 0,
+              zIndex: 10,
               padding: '6px 14px',
               fontSize: 10,
               letterSpacing: '0.08em',
@@ -176,24 +174,76 @@ export default function App() {
               color: 'var(--text-secondary)',
               background: 'var(--bg-card)',
               borderBottom: '1px solid var(--border)',
+              borderTop: '1px solid var(--border)',
               display: 'flex',
               alignItems: 'center',
               gap: 6,
             }}>
               <span style={{ fontSize: 12 }}>🔍</span> Detection View — Character Bounding Boxes
+              {words.length > 0 && (
+                <span style={{
+                  marginLeft: 'auto',
+                  background: 'rgba(249,115,22,0.15)',
+                  color: 'var(--accent)',
+                  padding: '1px 8px',
+                  borderRadius: 20,
+                  fontSize: 10,
+                  fontWeight: 600,
+                }}>
+                  {words.length} characters
+                </span>
+              )}
             </div>
-            {/* Canvas */}
+
+            {/* Canvas — natural image height */}
             <div style={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'hidden',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
               padding: 12,
+              display: 'flex',
+              justifyContent: 'center',
             }}>
               {imageURL ? (
-                <InscriptionCanvas
+                <div style={{ position: 'relative', width: '100%' }}>
+                  <InscriptionCanvas
+                    imageURL={imageURL}
+                    words={words}
+                    imageWidth={apiResponse?.image_width}
+                    imageHeight={apiResponse?.image_height}
+                    hoveredWordId={hoveredWordId}
+                    onWordHover={setHoveredWordId}
+                  />
+                </div>
+              ) : (
+                <EmptyCanvas />
+              )}
+            </div>
+          </div>
+
+          {/* ── PANEL 2: Original image (clean, no boxes) ── */}
+          {imageURL && (
+            <div style={{ flexShrink: 0 }}>
+              {/* Section label */}
+              <div style={{
+                position: 'sticky',
+                top: 0,
+                zIndex: 10,
+                padding: '6px 14px',
+                fontSize: 10,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: 'var(--text-secondary)',
+                background: 'var(--bg-card)',
+                borderBottom: '1px solid var(--border)',
+                borderTop: '2px solid var(--accent)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <span style={{ fontSize: 12 }}>🖼️</span> Original Image — No boxes, read the full inscription
+              </div>
+
+              {/* Full-size original image with hover highlight */}
+              <div style={{ padding: 12, display: 'flex', justifyContent: 'center' }}>
+                <OriginalImageViewer
                   imageURL={imageURL}
                   words={words}
                   imageWidth={apiResponse?.image_width}
@@ -201,66 +251,11 @@ export default function App() {
                   hoveredWordId={hoveredWordId}
                   onWordHover={setHoveredWordId}
                 />
-              ) : (
-                <EmptyCanvas />
-              )}
+              </div>
             </div>
-          </div>
-
-          {/* ── BOTTOM: Original image (clean, no boxes, scrollable) ── */}
-          <div style={{
-            flex: '0 0 50%',
-            minHeight: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            background: 'var(--bg-primary)',
-          }}>
-            {/* Section label */}
-            <div style={{
-              flexShrink: 0,
-              padding: '6px 14px',
-              fontSize: 10,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: 'var(--text-secondary)',
-              background: 'var(--bg-card)',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <span style={{ fontSize: 12 }}>🖼️</span> Original Image — Scroll to view full inscription
-            </div>
-            {/* Scrollable original image */}
-            <div style={{
-              flex: 1,
-              overflow: 'auto',
-              padding: 12,
-              display: 'flex',
-              alignItems: 'flex-start',
-              justifyContent: 'center',
-            }}>
-              {imageURL ? (
-                <img
-                  src={imageURL}
-                  alt="Original uploaded inscription"
-                  style={{
-                    display: 'block',
-                    maxWidth: '100%',
-                    height: 'auto',
-                    borderRadius: 10,
-                    border: '1px solid var(--border)',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
-                  }}
-                />
-              ) : (
-                <div style={{ color: 'var(--text-secondary)', fontSize: 13, opacity: 0.4, marginTop: 40 }}>
-                  Original image will appear here after upload
-                </div>
-              )}
-            </div>
-          </div>
+          )}
         </div>
+
 
 
         {/* RIGHT — translation (42%) */}
