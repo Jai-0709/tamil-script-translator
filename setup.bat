@@ -5,7 +5,7 @@ echo  Ancient Tamil Inscription Translator — Setup
 echo ============================================================
 echo.
 
-cd /d "E:\TAMIL SCRIPT VERSION 2"
+cd /d "%~dp0"
 
 :: ── Step 1: Python virtual environment ──────────────────────────────────
 echo [1/4] Creating Python virtual environment...
@@ -36,7 +36,7 @@ echo.
 :: ── Step 3: Install Python requirements ─────────────────────────────────
 echo [3/4] Installing Python dependencies...
 pip install --upgrade pip
-pip install -r "E:\TAMIL SCRIPT VERSION 2\backend\requirements.txt"
+pip install -r "%~dp0backend\requirements.txt"
 if errorlevel 1 (
     echo [ERROR] pip install failed. Check backend\requirements.txt.
     pause
@@ -47,7 +47,7 @@ echo.
 
 :: ── Step 4: Install Node / npm dependencies ──────────────────────────────
 echo [4/4] Installing frontend Node dependencies...
-cd /d "E:\TAMIL SCRIPT VERSION 2\frontend"
+cd /d "%~dp0frontend"
 where npm >nul 2>&1
 if errorlevel 1 (
     echo [WARN] npm not found. Please install Node.js from https://nodejs.org/
@@ -72,7 +72,7 @@ echo    1. Double-click  run_backend.bat   (starts API on :8000)
 echo    2. Double-click  run_frontend.bat  (starts UI  on :5173)
 echo.
 echo  To train the model:
-echo    python "E:\TAMIL SCRIPT VERSION 2\backend\train.py"
+echo    python "%~dp0backend\train.py"
 echo.
 echo  To test the pipeline:
 echo    python test_pipeline.py --image "path\to\inscription.jpg"

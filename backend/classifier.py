@@ -26,7 +26,6 @@ _MODELS_DIR    = _BACKEND_DIR.parent / "models"
 
 MODEL_PATH     = _MODELS_DIR / "ancient_tamil_classifier.pth"
 CLASS_IDX_PATH = _MODELS_DIR / "class_to_idx.json"
-LABEL_MAP_PATH = _MODELS_DIR / "label_map.json"
 
 DEVICE   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE = 224
@@ -82,14 +81,13 @@ _model: nn.Module | None = None
 _num_classes: int        = 0
 _class_to_idx: Dict      = {}
 _idx_to_class: Dict      = {}
-_label_map: Dict         = {}
 _model_loaded: bool      = False
 
 
 def _ensure_loaded():
     """Lazy-load everything the first time it is needed."""
     global _model, _num_classes, _class_to_idx, _idx_to_class
-    global _label_map, _model_loaded
+    global _model_loaded
 
     if _model_loaded:
         return
@@ -104,14 +102,6 @@ def _ensure_loaded():
     with open(CLASS_IDX_PATH, "r", encoding="utf-8") as f:
         _class_to_idx = json.load(f)
     _idx_to_class = {int(v): k for k, v in _class_to_idx.items()}
-
-    # Load label map (class_id → modern Tamil character)
-    if LABEL_MAP_PATH.exists():
-        with open(LABEL_MAP_PATH, "r", encoding="utf-8") as f:
-            _label_map = json.load(f)
-    else:
-        # Fallback: label_map is identity
-        _label_map = {k: k for k in _class_to_idx}
 
     # Load model
     _model, _num_classes = _load_model()
@@ -173,7 +163,7 @@ def classify_crop(crop: np.ndarray) -> Dict:
         cid = _idx_to_class.get(int(idx), str(int(idx)))
         top3.append({
             "class":       cid,
-            "modern_tamil": _label_map.get(cid, cid),
+            "modern_tamil": cid,
             "confidence":  round(float(conf), 4),
         })
 
@@ -214,10 +204,9 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
 
         for pred_idx, conf in zip(pred_idxs.tolist(), confs.tolist()):
             class_id_str = _idx_to_class.get(int(pred_idx), str(int(pred_idx)))
-            modern_tamil = _label_map.get(class_id_str, class_id_str)
             results.append({
                 "class_id":    class_id_str,
-                "modern_tamil": modern_tamil,
+                "modern_tamil": class_id_str,
                 "confidence":  round(float(conf), 4),
             })
 

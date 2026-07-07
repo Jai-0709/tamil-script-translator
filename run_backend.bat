@@ -6,7 +6,7 @@ echo  URL: http://localhost:8000
 echo  Docs: http://localhost:8000/docs
 echo ============================================================
 
-cd /d "E:\TAMIL SCRIPT VERSION 2"
+cd /d "%~dp0"
 
 :: Activate virtual environment if it exists
 if exist "venv\Scripts\activate.bat" (
@@ -21,7 +21,7 @@ echo.
 echo [INFO] Starting uvicorn...
 echo.
 
-cd /d "E:\TAMIL SCRIPT VERSION 2\backend"
+cd /d "%~dp0backend"
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 pause

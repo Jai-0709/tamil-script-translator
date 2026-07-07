@@ -48,10 +48,8 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────
 #  PATHS  (match train.py exactly)
 # ─────────────────────────────────────────────
-BASE_DIR       = Path(r"E:\TAMIL SCRIPT VERSION 2")
-DATA_DIR       = BASE_DIR / "TAMIL SCRIPT DATASET"
-ANCIENT_DIR    = DATA_DIR / "images_categorised"
-AUGMENTED_DIR  = DATA_DIR / "augmented_images"
+BASE_DIR       = Path(__file__).resolve().parent.parent
+DATA_DIR       = BASE_DIR / "TAMIL SCRIPT DATASET" / "dataset_clean"
 
 OUT_DIR        = BASE_DIR / "models"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -64,7 +62,6 @@ CURVE_PATH     = OUT_DIR / "training_curve_robust.png"
 # ─────────────────────────────────────────────
 #  HYPERPARAMETERS
 # ─────────────────────────────────────────────
-NUM_CLASSES  = 28
 BATCH_SIZE   = 16
 EPOCHS       = 30
 LR           = 5e-5
@@ -150,7 +147,6 @@ class AlbumentationsSubset(Dataset):
 
     def __getitem__(self, idx):
         pil_img, label = self.subset[idx]
-        # PIL → numpy uint8 RGB (required by Albumentations)
         img_np = np.array(pil_img.convert("RGB"), dtype=np.uint8)
         if self.transform:
             augmented = self.transform(image=img_np)
@@ -162,25 +158,15 @@ class AlbumentationsSubset(Dataset):
 
 def load_combined_dataset():
     """
-    Load images_categorised + augmented_images into a single raw dataset.
-    Verifies class_to_idx consistency between both folders.
+    Load unified cleaned dataset.
     """
-    ds_ancient   = RawImageFolder(str(ANCIENT_DIR))
-    ds_augmented = RawImageFolder(str(AUGMENTED_DIR))
-
-    assert ds_ancient.class_to_idx == ds_augmented.class_to_idx, (
-        "class_to_idx mismatch between images_categorised and augmented_images!"
-    )
-
-    class_to_idx = ds_ancient.class_to_idx
+    dataset = RawImageFolder(str(DATA_DIR))
+    class_to_idx = dataset.class_to_idx
     print(f"[INFO] Classes found   : {sorted(class_to_idx.keys())}")
-    print(f"[INFO] Ancient images  : {len(ds_ancient)}")
-    print(f"[INFO] Augmented images: {len(ds_augmented)}")
+    print(f"[INFO] Total images    : {len(dataset)}")
 
-    combined = ConcatDataset([ds_ancient, ds_augmented])
-    targets  = ([s[1] for s in ds_ancient.samples] +
-                [s[1] for s in ds_augmented.samples])
-    return combined, targets, class_to_idx
+    targets = [s[1] for s in dataset.samples]
+    return dataset, targets, class_to_idx
 
 
 def stratified_split(dataset, targets, val_size=VAL_SPLIT, seed=42):
@@ -212,10 +198,34 @@ def build_model_from_checkpoint(checkpoint_path: Path, num_classes: int) -> nn.M
         print("[INFO] Using torchvision EfficientNet-B0")
 
     if checkpoint_path.exists():
-        ckpt  = torch.load(str(checkpoint_path), map_location="cpu")
-        state = ckpt.get("model_state_dict", ckpt)
-        model.load_state_dict(state)
-        print(f"[INFO] Loaded existing weights from: {checkpoint_path}")
+        try:
+            ckpt  = torch.load(str(checkpoint_path), map_location="cpu")
+            state = ckpt.get("model_state_dict", ckpt)
+            
+            # Check for size mismatch
+            fc_key = None
+            for k in ["_fc.weight", "classifier.1.weight"]:
+                if k in state:
+                    fc_key = k
+                    break
+            if fc_key is not None:
+                ckpt_classes = state[fc_key].shape[0]
+                if ckpt_classes != num_classes:
+                    print(f"[WARN] Checkpoint class count ({ckpt_classes}) differs from current model class count ({num_classes}). Resetting classifier layers.")
+                    del state[fc_key]
+                    bias_key = fc_key.replace(".weight", ".bias")
+                    if bias_key in state:
+                        del state[bias_key]
+                    model.load_state_dict(state, strict=False)
+                    print(f"[INFO] Loaded feature extractor weights from checkpoint, classifier initialized randomly.")
+                    model.to(DEVICE)
+                    model.eval()
+                    return model
+
+            model.load_state_dict(state)
+            print(f"[INFO] Loaded existing weights from: {checkpoint_path}")
+        except Exception as e:
+            print(f"[WARN] Failed to load checkpoint: {e}. Starting from scratch.")
     else:
         print(f"[WARN] No checkpoint found at {checkpoint_path}. "
               "Starting from ImageNet pretrained weights.")
@@ -324,9 +334,11 @@ def main():
     val_loader   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False,
                               num_workers=NUM_WORKERS, pin_memory=USE_AMP)
 
+    num_classes = len(class_to_idx)
+
     # ── Model — fine-tune from existing weights ────────────────────────────
     print("\n[STEP 2] Loading existing model weights for fine-tuning ...")
-    model = build_model_from_checkpoint(OUTPUT_PATH, NUM_CLASSES)
+    model = build_model_from_checkpoint(OUTPUT_PATH, num_classes)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
     optimizer = optim.AdamW(model.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
@@ -373,7 +385,7 @@ def main():
     torch.save({
         "model_state_dict": best_weights,
         "class_to_idx":     class_to_idx,
-        "num_classes":      NUM_CLASSES,
+        "num_classes":      num_classes,
         "img_size":         IMG_SIZE,
     }, str(OUTPUT_PATH))
 

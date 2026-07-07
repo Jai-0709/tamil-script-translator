@@ -10,9 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "TAMIL SCRIPT DATASET"
 
 DATASETS = {
-    "images_categorised": DATA_DIR / "images_categorised",
-    "augmented_images"  : DATA_DIR / "augmented_images",
-    "Modern characters" : DATA_DIR / "Modern characters",
+    "dataset_clean"     : DATA_DIR / "dataset_clean",
 }
 
 IMG_EXTS       = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"}
@@ -36,7 +34,7 @@ def scan_folder(folder: Path) -> tuple[dict, list]:
 
     class_dirs = sorted(
         [d for d in folder.iterdir() if d.is_dir()],
-        key=lambda d: (int(d.name) if d.name.isdigit() else float("inf"))
+        key=lambda d: (int(d.name) if d.name.isdigit() else d.name)
     )
 
     for cls_dir in class_dirs:
@@ -65,7 +63,7 @@ def print_class_table(class_counts: dict, warn_threshold: int):
     print(header)
     print("  " + "·" * (col_cls + col_cnt + 10))
 
-    for cls in sorted(class_counts.keys(), key=lambda x: (int(x) if x.isdigit() else float("inf"))):
+    for cls in sorted(class_counts.keys(), key=lambda x: (int(x) if x.isdigit() else x)):
         count = class_counts[cls]
         if count == 0:
             status = "❌ EMPTY"

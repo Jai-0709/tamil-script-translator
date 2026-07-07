@@ -20,10 +20,10 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────
 #  PATHS
 # ─────────────────────────────────────────────
-BASE_DIR       = Path(r"E:\TAMIL SCRIPT VERSION 2")
+BASE_DIR       = Path(__file__).resolve().parent.parent
 MODEL_PATH     = BASE_DIR / "models" / "ancient_tamil_classifier.pth"
 CLASS_IDX_PATH = BASE_DIR / "models" / "class_to_idx.json"
-ANCIENT_DIR    = BASE_DIR / "TAMIL SCRIPT DATASET" / "images_categorised"
+ANCIENT_DIR    = BASE_DIR / "TAMIL SCRIPT DATASET" / "dataset_clean"
 
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 IMG_SIZE   = 224
@@ -103,7 +103,7 @@ def collect_samples(ancient_dir: Path, samples_per_class: int, seed: int):
 
     class_folders = sorted(
         [d for d in ancient_dir.iterdir() if d.is_dir()],
-        key=lambda d: int(d.name)
+        key=lambda d: d.name
     )
 
     if not class_folders:
@@ -216,7 +216,7 @@ def main():
         if correct:
             class_stats[true_cls][0] += 1
 
-    for cls in sorted(class_stats.keys(), key=lambda x: int(x)):
+    for cls in sorted(class_stats.keys()):
         c, t = class_stats[cls]
         bar = "█" * c + "░" * (t - c)
         print(f"  Class {cls:>2}: {c}/{t}  [{bar}]  {c/t*100:.0f}%")

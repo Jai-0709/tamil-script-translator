@@ -33,10 +33,8 @@ warnings.filterwarnings("ignore")
 # ─────────────────────────────────────────────
 #  PATHS
 # ─────────────────────────────────────────────
-BASE_DIR        = Path(r"E:\TAMIL SCRIPT VERSION 2")
-DATA_DIR        = BASE_DIR / "TAMIL SCRIPT DATASET"
-ANCIENT_DIR     = DATA_DIR / "images_categorised"
-AUGMENTED_DIR   = DATA_DIR / "augmented_images"
+BASE_DIR        = Path(__file__).resolve().parent.parent
+DATA_DIR        = BASE_DIR / "TAMIL SCRIPT DATASET" / "dataset_clean"
 
 OUT_DIR         = BASE_DIR / "models"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -49,7 +47,6 @@ CKPT_PATH       = OUT_DIR / "checkpoint_latest.pth"
 # ─────────────────────────────────────────────
 #  HYPERPARAMETERS
 # ─────────────────────────────────────────────
-NUM_CLASSES     = 28
 BATCH_SIZE      = 32
 FREEZE_EPOCHS   = 5
 UNFREEZE_EPOCHS = 45
@@ -101,7 +98,6 @@ class TransformSubset(Dataset):
 
     def __getitem__(self, idx):
         img, label = self.subset[idx]
-        # img is already a PIL image because ImageFolder uses default loader
         if self.transform:
             img = self.transform(img)
         return img, label
@@ -117,28 +113,17 @@ class RawImageFolder(ImageFolder):
 
 def load_combined_dataset():
     """
-    Load images_categorised + augmented_images into a single raw dataset.
-    Class names are folder names (strings "0" to "27").
+    Load unified cleaned dataset.
     Returns dataset with sorted class-to-index mapping.
     """
-    ds_ancient   = RawImageFolder(str(ANCIENT_DIR))
-    ds_augmented = RawImageFolder(str(AUGMENTED_DIR))
-
-    # Verify both datasets have the same class_to_idx
-    assert ds_ancient.class_to_idx == ds_augmented.class_to_idx, (
-        "class_to_idx mismatch between images_categorised and augmented_images!"
-    )
-
-    class_to_idx = ds_ancient.class_to_idx
+    dataset = RawImageFolder(str(DATA_DIR))
+    class_to_idx = dataset.class_to_idx
     print(f"[INFO] Classes found: {sorted(class_to_idx.keys())}")
-    print(f"[INFO] Ancient images  : {len(ds_ancient)}")
-    print(f"[INFO] Augmented images: {len(ds_augmented)}")
+    print(f"[INFO] Total images  : {len(dataset)}")
 
-    combined = ConcatDataset([ds_ancient, ds_augmented])
     # Build targets list for stratified split
-    targets = ([s[1] for s in ds_ancient.samples] +
-               [s[1] for s in ds_augmented.samples])
-    return combined, targets, class_to_idx
+    targets = [s[1] for s in dataset.samples]
+    return dataset, targets, class_to_idx
 
 
 def stratified_split(dataset, targets, val_size=VAL_SPLIT, seed=42):
@@ -286,15 +271,40 @@ def load_checkpoint(model, optimizer, scheduler):
     """Load checkpoint if it exists. Returns (start_phase, start_epoch, best_acc)."""
     if not CKPT_PATH.exists():
         return 1, 1, 0.0
-    ckpt = torch.load(str(CKPT_PATH), map_location=DEVICE)
-    model.load_state_dict(ckpt["model_state_dict"])
-    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
-    phase     = ckpt["phase"]
-    epoch     = ckpt["epoch"]
-    best_acc  = ckpt["best_val_acc"]
-    print(f"[RESUMED] Resuming from Phase {phase} Epoch {epoch}")
-    return phase, epoch, best_acc
+    try:
+        ckpt = torch.load(str(CKPT_PATH), map_location=DEVICE)
+        state = ckpt["model_state_dict"]
+        
+        # Check for class size compatibility
+        fc_key = None
+        for k in ["_fc.weight", "classifier.1.weight"]:
+            if k in state:
+                fc_key = k
+                break
+        if fc_key is not None:
+            ckpt_classes = state[fc_key].shape[0]
+            if hasattr(model, '_fc'):
+                curr_classes = model._fc.weight.shape[0]
+            elif hasattr(model, 'classifier'):
+                curr_classes = model.classifier[1].weight.shape[0]
+            else:
+                curr_classes = None
+                
+            if curr_classes is not None and ckpt_classes != curr_classes:
+                print(f"[WARN] Checkpoint class count ({ckpt_classes}) differs from current model class count ({curr_classes}). Ignoring checkpoint.")
+                return 1, 1, 0.0
+
+        model.load_state_dict(state)
+        optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        phase     = ckpt["phase"]
+        epoch     = ckpt["epoch"]
+        best_acc  = ckpt["best_val_acc"]
+        print(f"[RESUMED] Resuming from Phase {phase} Epoch {epoch}")
+        return phase, epoch, best_acc
+    except Exception as e:
+        print(f"[WARN] Failed to load checkpoint: {e}. Starting from scratch.")
+        return 1, 1, 0.0
 
 
 # ─────────────────────────────────────────────
@@ -320,9 +330,11 @@ def main():
         json.dump(class_to_idx, f, indent=2, ensure_ascii=False)
     print(f"[INFO] class_to_idx saved → {CLASS_IDX_PATH}")
 
+    num_classes = len(class_to_idx)
+
     # ── Model ─────────────────────────────────
     print("\n[STEP 2] Building model ...")
-    model = build_model(NUM_CLASSES).to(DEVICE)
+    model = build_model(num_classes).to(DEVICE)
 
     criterion = nn.CrossEntropyLoss(label_smoothing=LABEL_SMOOTHING)
     scaler    = GradScaler(enabled=USE_AMP)
@@ -425,7 +437,7 @@ def main():
     print(f"\n[STEP 3] Saving best model (val_acc={best_acc:.4f}) → {MODEL_PATH}")
     torch.save({"model_state_dict": best_weights,
                 "class_to_idx": class_to_idx,
-                "num_classes": NUM_CLASSES,
+                "num_classes": num_classes,
                 "img_size": IMG_SIZE}, str(MODEL_PATH))
 
     # ── Plot curves ────────────────────────────
