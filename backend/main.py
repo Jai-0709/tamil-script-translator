@@ -69,6 +69,11 @@ async def _warmup():
 # ─────────────────────────────────────────────
 #  RESPONSE SCHEMAS
 # ─────────────────────────────────────────────
+class Top3Item(BaseModel):
+    modern_tamil: str
+    confidence:   float
+
+
 class WordResult(BaseModel):
     id:           int
     x:            int
@@ -79,7 +84,8 @@ class WordResult(BaseModel):
     modern_tamil: str
     confidence:   float
     line:         int
-    is_unknown:   bool = False   # True when model classified as "unknown"
+    is_unknown:   bool = False
+    top3:         List[Top3Item] = []
 
 
 class TranslateResponse(BaseModel):
@@ -196,9 +202,17 @@ async def translate(file: UploadFile = File(...)):
     # ── 4. Build response ────────────────────────────────────────────────
     words: List[WordResult] = []
     for region, cls_result in zip(regions, results):
-        tamil_char  = cls_result["modern_tamil"]
-        is_unknown  = (tamil_char == _UNKNOWN_CLASS)
+        tamil_char   = cls_result["modern_tamil"]
+        is_unknown   = (tamil_char == _UNKNOWN_CLASS)
         display_char = "?" if is_unknown else tamil_char
+        raw_top3     = cls_result.get("top3", [])
+        top3_items   = [
+            Top3Item(
+                modern_tamil = ("?" if t["modern_tamil"] == _UNKNOWN_CLASS else t["modern_tamil"]),
+                confidence   = t["confidence"],
+            )
+            for t in raw_top3
+        ]
         words.append(WordResult(
             id           = region["id"],
             x            = region["x"],
@@ -210,6 +224,7 @@ async def translate(file: UploadFile = File(...)):
             confidence   = cls_result["confidence"],
             line         = region["line"],
             is_unknown   = is_unknown,
+            top3         = top3_items,
         ))
 
     sentence      = _build_sentence(words)

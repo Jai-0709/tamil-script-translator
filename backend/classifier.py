@@ -218,14 +218,25 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
         tensors = torch.stack([_crop_to_tensor(c) for c in batch_crops]).to(DEVICE)
         logits  = _model(tensors)
         probs   = F.softmax(logits, dim=1)
-        confs, pred_idxs = probs.max(dim=1)
 
-        for pred_idx, conf in zip(pred_idxs.tolist(), confs.tolist()):
-            class_id_str = _idx_to_class.get(int(pred_idx), str(int(pred_idx)))
+        # Get top-3 predictions per crop
+        top3_confs, top3_idxs = torch.topk(probs, k=min(3, probs.shape[1]), dim=1)
+
+        for j in range(len(batch_crops)):
+            top3 = []
+            for idx, conf in zip(top3_idxs[j].tolist(), top3_confs[j].tolist()):
+                cid = _idx_to_class.get(int(idx), str(int(idx)))
+                top3.append({
+                    "class":        cid,
+                    "modern_tamil": cid,
+                    "confidence":   round(float(conf), 4),
+                })
+            best = top3[0]
             results.append({
-                "class_id":    class_id_str,
-                "modern_tamil": class_id_str,
-                "confidence":  round(float(conf), 4),
+                "class_id":    best["class"],
+                "modern_tamil": best["modern_tamil"],
+                "confidence":  best["confidence"],
+                "top3":        top3,
             })
 
     return results
