@@ -157,31 +157,111 @@ export default function App() {
             </div>
           )}
 
-          {/* Canvas area — fills remaining height, image contained inside */}
+          {/* ── TOP: Detection canvas (annotated image with boxes) ── */}
           <div style={{
-            flex: 1,
+            flex: '0 0 50%',
             minHeight: 0,
-            overflow: 'hidden',
             display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
+            flexDirection: 'column',
+            borderBottom: '2px solid var(--border)',
             background: 'var(--bg-primary)',
           }}>
-            {imageURL ? (
-              <InscriptionCanvas
-                imageURL={imageURL}
-                words={words}
-                imageWidth={apiResponse?.image_width}
-                imageHeight={apiResponse?.image_height}
-                hoveredWordId={hoveredWordId}
-                onWordHover={setHoveredWordId}
-              />
-            ) : (
-              <EmptyCanvas />
-            )}
+            {/* Section label */}
+            <div style={{
+              flexShrink: 0,
+              padding: '6px 14px',
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--text-secondary)',
+              background: 'var(--bg-card)',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <span style={{ fontSize: 12 }}>🔍</span> Detection View — Character Bounding Boxes
+            </div>
+            {/* Canvas */}
+            <div style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 12,
+            }}>
+              {imageURL ? (
+                <InscriptionCanvas
+                  imageURL={imageURL}
+                  words={words}
+                  imageWidth={apiResponse?.image_width}
+                  imageHeight={apiResponse?.image_height}
+                  hoveredWordId={hoveredWordId}
+                  onWordHover={setHoveredWordId}
+                />
+              ) : (
+                <EmptyCanvas />
+              )}
+            </div>
+          </div>
+
+          {/* ── BOTTOM: Original image (clean, no boxes, scrollable) ── */}
+          <div style={{
+            flex: '0 0 50%',
+            minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--bg-primary)',
+          }}>
+            {/* Section label */}
+            <div style={{
+              flexShrink: 0,
+              padding: '6px 14px',
+              fontSize: 10,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--text-secondary)',
+              background: 'var(--bg-card)',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <span style={{ fontSize: 12 }}>🖼️</span> Original Image — Scroll to view full inscription
+            </div>
+            {/* Scrollable original image */}
+            <div style={{
+              flex: 1,
+              overflow: 'auto',
+              padding: 12,
+              display: 'flex',
+              alignItems: 'flex-start',
+              justifyContent: 'center',
+            }}>
+              {imageURL ? (
+                <img
+                  src={imageURL}
+                  alt="Original uploaded inscription"
+                  style={{
+                    display: 'block',
+                    maxWidth: '100%',
+                    height: 'auto',
+                    borderRadius: 10,
+                    border: '1px solid var(--border)',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+                  }}
+                />
+              ) : (
+                <div style={{ color: 'var(--text-secondary)', fontSize: 13, opacity: 0.4, marginTop: 40 }}>
+                  Original image will appear here after upload
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
 
         {/* RIGHT — translation (42%) */}
         <div style={{
