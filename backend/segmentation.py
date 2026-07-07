@@ -86,13 +86,17 @@ def _detect_image_type(gray: np.ndarray) -> str:
     print(f"[SEG] bg_median={bg_brightness:.1f} interior_mean={interior_mean:.1f} "
           f"interior_std={interior_std:.1f} lap_var={lap_var:.1f}")
 
-    if bg_brightness > 210 and interior_std > 20 and lap_var > 500:
-        # Very bright border + high sharpness = clean printed document
+    if bg_brightness > 200 and interior_std > 20:
+        # Very bright border = clean printed/written document on paper
         return "clean_document"
-    elif bg_brightness < 40:
+    elif bg_brightness < 60 and interior_mean > 150:
+        # Dark outer frame but bright interior = photo of document page (WhatsApp etc.)
+        # Treat as clean document — text is dark on white
+        return "clean_document"
+    elif bg_brightness < 60:
         return "dark_document"
     else:
-        # Stone inscriptions: medium grey background, medium-high texture variance
+        # Stone inscriptions: medium grey background, medium texture
         return "stone_inscription"
 
 
@@ -104,16 +108,19 @@ def _preprocess_stone(gray: np.ndarray, img_type: str) -> np.ndarray:
     h, w = gray.shape
 
     if img_type == "clean_document":
-        # Simple: Otsu threshold directly - background is bright, text is dark
-        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        # Dark text on white/cream paper — invert Otsu to make text WHITE (foreground)
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        # Morphological opening to remove pepper noise on clean docs
+        k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
         return binary
 
     elif img_type == "dark_document":
-        # Background is dark, text is lighter — invert and use Otsu
+        # Truly dark background with lighter text (e.g. chalk on blackboard)
         inverted = cv2.bitwise_not(gray)
         blurred = cv2.GaussianBlur(inverted, (5, 5), 0)
-        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return binary
 
     else:
@@ -160,38 +167,46 @@ def _preprocess_stone(gray: np.ndarray, img_type: str) -> np.ndarray:
         return cleaned
 
 
-def _compute_adaptive_params(img_w: int, img_h: int) -> dict:
+def _compute_adaptive_params(img_w: int, img_h: int, img_type: str = "stone_inscription") -> dict:
     """
-    Compute all morphological and filter parameters based on image size.
-    Avoids hardcoded values that break on different inscription photos.
+    Compute all morphological and filter parameters based on image size and type.
+    Clean documents need a very small dilation kernel — otherwise adjacent
+    printed characters merge into one huge blob.
     """
     estimated_char_w = max(15, img_w // 35)
     estimated_char_h = max(15, img_h // 12)
 
-    # Dilation kernel: cap k_w at 6 to prevent merging adjacent characters
-    k_w = min(6, max(3, int(estimated_char_w * 0.25)))
-    k_h = min(2, max(2, int(estimated_char_h * 0.08)))
-
-    # Minimum character size filters to ignore tiny noise speckles
-    if img_w < 300:
-        min_w, min_h = 10, 10
-        min_area = 100
-    elif img_w < 600:
-        min_w, min_h = 15, 15
-        min_area = 300
+    if img_type == "clean_document":
+        # Printed/written text: characters are already well-separated — use MINIMAL dilation
+        # A large kernel merges the entire line into one blob
+        k_w = 2
+        k_h = 1
+        min_w  = max(5,  img_w // 80)    # printed chars can be quite small
+        min_h  = max(5,  img_h // 40)
+        min_area = min_w * min_h
+        max_w  = int(img_w * 0.15)       # single char never > 15% of width
+        max_h  = int(img_h * 0.20)       # single char never > 20% of height
+        border = max(5, int(min(img_w, img_h) * 0.01))
+        line_gap = max(10, int(estimated_char_h * 0.4))
     else:
-        min_w, min_h = 22, 22
-        min_area = 500
+        # Stone inscriptions: strokes need connecting — use wider dilation
+        k_w = min(6, max(3, int(estimated_char_w * 0.25)))
+        k_h = min(2, max(2, int(estimated_char_h * 0.08)))
 
-    # Maximum character size filters (reject huge blobs)
-    max_w = int(img_w * 0.25)
-    max_h = int(img_h * 0.40)
+        if img_w < 300:
+            min_w, min_h = 10, 10
+            min_area = 100
+        elif img_w < 600:
+            min_w, min_h = 15, 15
+            min_area = 300
+        else:
+            min_w, min_h = 22, 22
+            min_area = 500
 
-    # Border exclusion zone
-    border = max(20, int(min(img_w, img_h) * 0.025))
-
-    # Line gap for clustering
-    line_gap = max(20, int(estimated_char_h * 0.5))
+        max_w  = int(img_w * 0.25)
+        max_h  = int(img_h * 0.40)
+        border = max(20, int(min(img_w, img_h) * 0.025))
+        line_gap = max(20, int(estimated_char_h * 0.5))
 
     return {
         "k_w": k_w, "k_h": k_h,
@@ -278,7 +293,7 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     _save_debug_step("03_binary.jpg", binary)
 
     # ── STEP 5: Compute adaptive parameters ──────────────────────────────────
-    params = _compute_adaptive_params(work_w, work_h)
+    params = _compute_adaptive_params(work_w, work_h, img_type)
     print(f"[SEG] Adaptive params: {params}")
 
     # ── STEP 6: Zero out border region ───────────────────────────────────────
