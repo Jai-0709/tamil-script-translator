@@ -8,6 +8,9 @@ echo ============================================================
 
 cd /d "%~dp0"
 
+echo [INFO] Ensuring port 8000 is free...
+powershell -Command "Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }"
+
 :: Activate virtual environment if it exists
 if exist "venv\Scripts\activate.bat" (
     echo [INFO] Activating virtual environment...

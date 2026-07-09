@@ -52,16 +52,24 @@ If you prefer to run the setup manually in your terminal, open PowerShell or Com
 To run the application, you need to start **both** the Backend and Frontend servers. Keep both terminal windows open.
 
 ### 1. Start the Backend (FastAPI Server)
-You can start the backend by either double-clicking **`run_backend.bat`** or running these commands in a new terminal:
-```powershell
-# 1. Activate the environment
-# For PowerShell:
-.\venv\Scripts\Activate.ps1
-# For Command Prompt (CMD):
-# venv\Scripts\activate.bat
+You can start the backend by either double-clicking **`run_backend.bat`** or running manual commands depending on your terminal's current directory:
 
-# 2. Go to the backend folder and start uvicorn
+#### Option A: If your terminal is in the Project Root Directory
+```powershell
+# 1. Activate the virtual environment
+.\venv\Scripts\Activate.ps1   # (For Command Prompt, run: venv\Scripts\activate.bat)
+
+# 2. Go to the backend directory and start the server
 cd backend
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+#### Option B: If your terminal is already inside the `backend` Directory
+```powershell
+# 1. Activate the environment from the parent directory
+..\venv\Scripts\Activate.ps1  # (For Command Prompt, run: ..\venv\Scripts\activate.bat)
+
+# 2. Start the server (no cd command needed)
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 * **API URL**: `http://localhost:8000`
@@ -70,12 +78,18 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ---
 
 ### 2. Start the Frontend (React Dev Server)
-You can start the frontend by either double-clicking **`run_frontend.bat`** or running these commands in a **second** terminal window:
-```powershell
-# Go to the frontend directory
-cd frontend
+You can start the frontend by either double-clicking **`run_frontend.bat`** or running these commands:
 
-# Start the Vite development server
+#### Option A: If your terminal is in the Project Root Directory
+```powershell
+# Go to frontend folder and run dev server
+cd frontend
+npm run dev
+```
+
+#### Option B: If your terminal is already inside the `frontend` Directory
+```powershell
+# Run dev server directly (no cd command needed)
 npm run dev
 ```
 * **Frontend Web App URL**: `http://localhost:5173`

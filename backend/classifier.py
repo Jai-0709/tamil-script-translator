@@ -9,6 +9,7 @@ import warnings
 from pathlib import Path
 from typing import Dict, List
 
+import cv2
 import numpy as np
 import torch
 import torch.nn as nn
@@ -143,13 +144,70 @@ def get_num_classes() -> int:
 # ─────────────────────────────────────────────
 #  INFERENCE HELPERS
 # ─────────────────────────────────────────────
+def _preprocess_crop_for_classification(crop: np.ndarray) -> np.ndarray:
+    """
+    Preprocess a BGR inscription crop before classification.
+
+    Real inscription crops contain:
+    - Stone texture noise (grain, cracks)
+    - Uneven illumination across the carved area
+    - Low contrast between character groove and surrounding stone
+
+    This function normalizes all of these so the model sees a clean,
+    consistent character shape regardless of stone quality.
+
+    Returns a BGR image ready for PIL conversion.
+    """
+    # Ensure minimum size for processing
+    h, w = crop.shape[:2]
+    if h < 4 or w < 4:
+        return crop
+
+    # Convert to grayscale for processing
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    # 1. Denoise — remove stone grain while keeping character edges
+    denoised = cv2.fastNlMeansDenoising(gray, h=12, templateWindowSize=7, searchWindowSize=21)
+
+    # 2. CLAHE — boost local contrast (handles uneven lighting on stone surface)
+    clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+    enhanced = clahe.apply(denoised)
+
+    # 3. Adaptive threshold → clean binary character mask
+    #    blockSize must be odd and > 1; clamp to valid range
+    block = max(11, (min(h, w) // 4) | 1)   # odd number, at least 11
+    binary = cv2.adaptiveThreshold(
+        enhanced, 255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        blockSize=block, C=8
+    )
+
+    # 4. Small morphological cleanup (remove noise dots)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k, iterations=1)
+
+    # 5. Detect foreground ratio — if nearly empty, fall back to raw enhanced gray
+    fg_ratio = cv2.countNonZero(binary) / max(binary.size, 1)
+    if fg_ratio < 0.02 or fg_ratio > 0.85:
+        # Fallback: just use CLAHE-enhanced grayscale (inverted so char=bright)
+        _, binary = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # 6. Convert binary mask back to 3-channel BGR (white char on black bg)
+    #    The model was trained on grayscale characters converted to 3-channel
+    bgr_out = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    return bgr_out
+
+
 def _crop_to_tensor(crop: np.ndarray) -> torch.Tensor:
     """Convert a BGR numpy crop to a normalised tensor.
 
-    Pipeline: BGR → RGB (PIL) → grayscale → 3-channel → resize 224×224
-              → ToTensor → ImageNet normalize
+    Pipeline: BGR → inscription-aware preprocess → RGB (PIL) →
+              grayscale → 3-channel → resize 224×224 → ToTensor → normalize
     """
-    pil = Image.fromarray(crop[..., ::-1])   # BGR → RGB
+    # Apply inscription-aware preprocessing to clean up stone texture
+    processed = _preprocess_crop_for_classification(crop)
+    pil = Image.fromarray(processed[..., ::-1])   # BGR → RGB
     return _transform(pil)
 
 

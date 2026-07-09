@@ -2,13 +2,13 @@
 segmentation.py — Adaptive Character-level Region Extraction for Stone Inscriptions.
 
 Robust Pipeline (works on any inscription size, lighting, noise level):
-  1  Resize to max 1200px width (preserve aspect ratio)
+  1  Resize to max 1400px width (preserve aspect ratio)
   2  Convert to grayscale
-  3  Detect image type: clean doc / dark doc / stone inscription
+  3  Detect image type: clean doc / photo_of_doc / dark doc / stone inscription
   4  Apply adaptive pre-processing based on type:
-       - Stone inscriptions: bilateral filter + CLAHE + adaptive threshold
+       - Stone inscriptions: CLAHE + adaptive threshold (NO close kernel)
        - Clean documents: Otsu threshold directly
-  5  Multi-scale morphological dilation to group character strokes
+  5  Mild dilation (iterations=1) to barely connect strokes within one character
   6  Find contours with strict adaptive size filters
   7  Remove overlapping boxes (IoU-based)
   8  Line detection via y-center clustering (adaptive gap)
@@ -51,11 +51,7 @@ def _resize_to_max(img: np.ndarray, max_width: int) -> np.ndarray:
 def _detect_image_type(gray: np.ndarray) -> str:
     """
     Detect whether the image is a clean document, dark document,
-    or a stone inscription.
-
-    Strategy: sample a broad border strip (5% of image on each side),
-    compute the MEDIAN brightness (robust to noise), and also check
-    the interior contrast and texture variance to distinguish stone.
+    photo-of-document, or a stone inscription.
     """
     h, w = gray.shape
 
@@ -64,39 +60,34 @@ def _detect_image_type(gray: np.ndarray) -> str:
     bh = max(10, h // 20)
 
     border_pixels = np.concatenate([
-        gray[:bh, :].ravel(),           # top strip
-        gray[-bh:, :].ravel(),          # bottom strip
-        gray[:, :bw].ravel(),           # left strip
-        gray[:, -bw:].ravel(),          # right strip
+        gray[:bh, :].ravel(),
+        gray[-bh:, :].ravel(),
+        gray[:, :bw].ravel(),
+        gray[:, -bw:].ravel(),
     ])
 
     bg_brightness = float(np.median(border_pixels))
 
-    # Interior region (avoid border)
     interior = gray[bh:-bh, bw:-bw]
-    interior_std  = float(interior.std())          # overall contrast
+    interior_std  = float(interior.std())
     interior_mean = float(interior.mean())
 
-    # Texture roughness: compare local variance across small blocks
-    # Stone has high LOCAL variance (grain/cracks) but medium GLOBAL mean
-    # Clean docs have low local variance (white paper)
-    # We approximate this via Laplacian variance (measures sharpness/texture)
     lap_var = float(cv2.Laplacian(interior, cv2.CV_64F).var())
 
     print(f"[SEG] bg_median={bg_brightness:.1f} interior_mean={interior_mean:.1f} "
           f"interior_std={interior_std:.1f} lap_var={lap_var:.1f}")
 
+    # Phone-camera photo of a document (dark border + bright interior)
+    if bg_brightness < 60 and interior_mean > 150:
+        return "photo_of_doc"
+
     if bg_brightness > 200 and interior_std > 20:
-        # Very bright border = clean printed/written document on paper
         return "clean_document"
-    elif bg_brightness < 60 and interior_mean > 150:
-        # Dark outer frame but bright interior = photo of document page (WhatsApp etc.)
-        # Treat as clean document — text is dark on white
-        return "clean_document"
+
     elif bg_brightness < 60:
         return "dark_document"
+
     else:
-        # Stone inscriptions: medium grey background, medium texture
         return "stone_inscription"
 
 
@@ -104,109 +95,147 @@ def _preprocess_stone(gray: np.ndarray, img_type: str) -> np.ndarray:
     """
     Returns a clean binary mask where characters are WHITE (foreground).
     Applies different pre-processing strategies per image type.
+
+    KEY RULE for stone inscriptions:
+      - Do NOT use a morphological CLOSE here — that merges nearby characters.
+      - Do NOT use large black-hat kernels — they group entire text rows.
+      - The dilation step in segment_words() is the ONLY place we expand blobs.
     """
-    h, w = gray.shape
 
     if img_type == "clean_document":
-        # Dark text on white/cream paper — invert Otsu to make text WHITE (foreground)
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-        # Morphological opening to remove pepper noise on clean docs
+        k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
+        return binary
+
+    elif img_type == "photo_of_doc":
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        adaptive = cv2.adaptiveThreshold(
+            blurred, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            blockSize=31, C=10
+        )
+        _, otsu = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        binary = cv2.bitwise_or(adaptive, otsu)
         k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=1)
         return binary
 
     elif img_type == "dark_document":
-        # Truly dark background with lighter text (e.g. chalk on blackboard)
         inverted = cv2.bitwise_not(gray)
         blurred = cv2.GaussianBlur(inverted, (5, 5), 0)
         _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return binary
 
     else:
-        # stone_inscription: full pipeline
-        # Step A — Bilateral filter (removes grain noise while keeping sharp edges)
-        bilateral = cv2.bilateralFilter(gray, d=9, sigmaColor=75, sigmaSpace=75)
-        _save_debug_step("02a_bilateral.jpg", bilateral)
+        # ══════════════════════════════════════════════════════════════
+        # stone_inscription — CLEAN single-threshold pipeline
+        #
+        # Key insight:
+        #   The previous OR of 3 methods created noise everywhere → 13 chars
+        #   The previous AND of adapt+Otsu was too strict in dim areas → 80 chars
+        #   Root fix: use AGGRESSIVE CLAHE to normalise illumination FIRST,
+        #   then ONE well-tuned adaptive threshold at character scale.
+        #   After CLAHE the illumination is even, so Otsu is unnecessary.
+        #
+        # The adaptive block size = ~line-pitch scale (larger than 1 character).
+        # This means: grain (sub-character scale) is averaged away by the block,
+        # while characters (which are darker than their full-line neighbourhood)
+        # are reliably detected.
+        # ══════════════════════════════════════════════════════════════
 
-        # Step B — Strong Gaussian blur to kill stone grain texture
-        blurred = cv2.GaussianBlur(bilateral, (21, 21), 0)
-        _save_debug_step("02b_blurred.jpg", blurred)
+        h, w = gray.shape
 
-        # Step C — CLAHE to enhance local contrast across stone variations
-        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(blurred)
-        _save_debug_step("02c_clahe.jpg", enhanced)
+        # ── Step A: Bilateral denoise (edge-preserving) ─────────────────
+        denoised = cv2.bilateralFilter(gray, d=9, sigmaColor=60, sigmaSpace=60)
+        _save_debug_step("02a_denoised.jpg", denoised)
 
-        # Step D — Invert so dark carvings become bright foreground
-        inverted = cv2.bitwise_not(enhanced)
-        _save_debug_step("02d_inverted.jpg", inverted)
+        # ── Step B: AGGRESSIVE CLAHE — normalise illumination completely ──
+        # clipLimit=5 + small tile (4x4) = maximum local contrast boost.
+        # After this step the stone background brightness is equalised across
+        # the whole slab, so a single global-style threshold can work.
+        clahe = cv2.createCLAHE(clipLimit=5.0, tileGridSize=(4, 4))
+        clahe_img = clahe.apply(denoised)
+        _save_debug_step("02b_clahe.jpg", clahe_img)
 
-        # Step E — Fixed threshold at 127, auto-raise if too much foreground
-        _, binary = cv2.threshold(inverted, 127, 255, cv2.THRESH_BINARY)
-        fg_pct = cv2.countNonZero(binary) / binary.size
-        print(f"[SEG] Foreground at thresh 127: {fg_pct:.1%}")
+        # ── Step C: Single adaptive threshold at LINE-PITCH scale ─────────
+        # blockSize ≈ 2.5× estimated character width (= line-pitch scale).
+        # At this scale: the "local mean" is the average brightness of
+        # an entire character row. Carved grooves (chars) are darker than
+        # this mean; stone grain is NOT darker (grain is tiny, averages out).
+        char_w_est = max(20, w // 28)         # ~50px at 1400px
+        block_size = int(char_w_est * 2.5) | 1  # ~125px, odd
+        block_size = max(block_size, 41)       # minimum 41
 
-        if fg_pct > 0.45:
-            _, binary = cv2.threshold(inverted, 150, 255, cv2.THRESH_BINARY)
-            fg_pct = cv2.countNonZero(binary) / binary.size
-            print(f"[SEG] Foreground at thresh 150: {fg_pct:.1%}")
+        # Auto-tune C: start sensitive (C=4), raise if too much foreground.
+        # Target: 6% – 30% foreground (characters only, not grain).
+        k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+        best_binary = None
+        for C_val in [4, 6, 8, 11, 15]:
+            candidate = cv2.adaptiveThreshold(
+                clahe_img, 255,
+                cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                cv2.THRESH_BINARY_INV,
+                blockSize=block_size, C=C_val
+            )
+            # Small opening: remove isolated grain pixels
+            candidate = cv2.morphologyEx(candidate, cv2.MORPH_OPEN, k_open, iterations=1)
+            fg = cv2.countNonZero(candidate) / candidate.size
+            print(f"[SEG] C={C_val}: foreground={fg:.1%} (block={block_size})")
+            best_binary = candidate
+            if fg <= 0.30:   # acceptable range reached
+                break
 
-        if fg_pct > 0.60:
-            _, binary = cv2.threshold(inverted, 170, 255, cv2.THRESH_BINARY)
-            fg_pct = cv2.countNonZero(binary) / binary.size
-            print(f"[SEG] Foreground at thresh 170: {fg_pct:.1%}")
-
-        _save_debug_step("02e_binary.jpg", binary)
-
-        # Step F — Morphological opening to remove tiny speckles
-        k_open = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        cleaned = cv2.morphologyEx(binary, cv2.MORPH_OPEN, k_open, iterations=2)
-        _save_debug_step("02f_cleaned.jpg", cleaned)
-
-        return cleaned
+        _save_debug_step("02c_adaptive.jpg", best_binary)
+        return best_binary
 
 
 def _compute_adaptive_params(img_w: int, img_h: int, img_type: str = "stone_inscription") -> dict:
     """
-    Compute all morphological and filter parameters based on image size and type.
-    Clean documents need a very small dilation kernel — otherwise adjacent
-    printed characters merge into one huge blob.
-    """
-    estimated_char_w = max(15, img_w // 35)
-    estimated_char_h = max(15, img_h // 12)
+    Compute morphological and size filter parameters based on image size and type.
 
-    if img_type == "clean_document":
-        # Printed/written text: characters are already well-separated — use MINIMAL dilation
-        # A large kernel merges the entire line into one blob
+    For stone inscriptions the dilation kernel must be SMALL enough that
+    adjacent characters don't merge — the binary preprocessing already
+    removed the noise, so we only need to connect strokes WITHIN one character.
+    """
+    estimated_char_w = max(15, img_w // 30)   # ~47px at 1400px
+    estimated_char_h = max(15, img_h // 10)   # depends on aspect ratio
+
+    if img_type in ("clean_document", "photo_of_doc"):
+        # Printed text: characters already well-separated — MINIMAL dilation
         k_w = 2
         k_h = 1
-        min_w  = max(5,  img_w // 80)    # printed chars can be quite small
+        min_w  = max(5,  img_w // 80)
         min_h  = max(5,  img_h // 40)
         min_area = min_w * min_h
-        max_w  = int(img_w * 0.15)       # single char never > 15% of width
-        max_h  = int(img_h * 0.20)       # single char never > 20% of height
+        max_w  = int(img_w * 0.15)
+        max_h  = int(img_h * 0.20)
         border = max(5, int(min(img_w, img_h) * 0.01))
         line_gap = max(10, int(estimated_char_h * 0.4))
     else:
-        # Stone inscriptions: strokes need connecting — use wider dilation
-        k_w = min(6, max(3, int(estimated_char_w * 0.25)))
-        k_h = min(2, max(2, int(estimated_char_h * 0.08)))
+        # Stone inscriptions:
+        # k_w: bridges intra-character stroke breaks (1–5px gaps in carved grooves)
+        #       must NOT bridge inter-character gaps (~8–20px between chars)
+        # Sweet spot: k_w = 4–6px at 1400px working width
+        k_w = min(6, max(3, int(estimated_char_w * 0.12)))   # ~5px at 1400px
+        k_h = min(3, max(2, int(estimated_char_h * 0.08)))   # ~2–3px
 
         if img_w < 300:
-            min_w, min_h = 10, 10
-            min_area = 100
+            min_w, min_h = 6, 6
+            min_area = 36
         elif img_w < 600:
-            min_w, min_h = 15, 15
-            min_area = 300
+            min_w, min_h = 10, 10
+            min_area = 120
         else:
-            min_w, min_h = 22, 22
-            min_area = 500
+            min_w, min_h = 14, 14    # 14×14px minimum — avoids grain noise
+            min_area = 250           # smaller than before: catches fine characters
 
-        max_w  = int(img_w * 0.25)
-        max_h  = int(img_h * 0.40)
-        border = max(20, int(min(img_w, img_h) * 0.025))
-        line_gap = max(20, int(estimated_char_h * 0.5))
+        max_w  = int(img_w * 0.22)   # single char max ~22% of width
+        max_h  = int(img_h * 0.38)   # single char max ~38% of height
+        border = max(10, int(min(img_w, img_h) * 0.01))    # reduced: don't cut edge chars
+        line_gap = max(12, int(estimated_char_h * 0.38))
 
     return {
         "k_w": k_w, "k_h": k_h,
@@ -247,18 +276,11 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     """
     Segment an inscription image into character-level bounding boxes.
 
-    Works on stone inscriptions of any size, lighting, noise, or quality.
-
     Args:
         image_bgr: BGR numpy array (uint8).
 
     Returns:
-        List of dicts, each with:
-            id    : int          — 1-indexed sequential id
-            x, y  : int         — top-left corner (original image coords)
-            w, h  : int         — width / height (original image coords)
-            line  : int         — 1-indexed line number
-            crop  : np.ndarray  — BGR crop at original resolution
+        List of dicts with: id, x, y, w, h, line, crop
     """
     # ── Handle edge-case input formats ────────────────────────────────────────
     if len(image_bgr.shape) == 3 and image_bgr.shape[2] == 4:
@@ -271,10 +293,9 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     orig_h, orig_w = orig.shape[:2]
 
     # ── STEP 1: Resize to working resolution ──────────────────────────────────
-    image_work = _resize_to_max(orig, max_width=1200)
+    image_work = _resize_to_max(orig, max_width=1400)
     work_h, work_w = image_work.shape[:2]
 
-    # Scale factors: work-space → original-image coords
     sx_orig = orig_w / work_w
     sy_orig = orig_h / work_h
 
@@ -288,7 +309,7 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     img_type = _detect_image_type(gray)
     print(f"[SEG] Detected image type: {img_type}")
 
-    # ── STEP 4: Adaptive pre-processing to get a binary mask ─────────────────
+    # ── STEP 4: Adaptive pre-processing → binary mask ─────────────────────────
     binary = _preprocess_stone(gray, img_type)
     _save_debug_step("03_binary.jpg", binary)
 
@@ -303,7 +324,9 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     binary[:, :border]  = 0
     binary[:, -border:] = 0
 
-    # ── STEP 7: Morphological dilation to connect character strokes ───────────
+    # ── STEP 7: Mild dilation — connect strokes WITHIN a character only ────────
+    # iterations=1 with small kernel: just bridges micro-gaps inside one character
+    # iterations=2 or wide kernel WILL merge adjacent characters — avoid it
     k_word = cv2.getStructuringElement(
         cv2.MORPH_RECT, (params["k_w"], params["k_h"])
     )
@@ -314,11 +337,11 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     print(f"[SEG] Total contours found: {len(contours)}")
 
-    min_w   = params["min_w"]
-    min_h   = params["min_h"]
+    min_w    = params["min_w"]
+    min_h    = params["min_h"]
     min_area = params["min_area"]
-    max_w   = params["max_w"]
-    max_h   = params["max_h"]
+    max_w    = params["max_w"]
+    max_h    = params["max_h"]
 
     regions_work: List[Dict] = []
     for cnt in contours:
@@ -333,13 +356,13 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         if (y + h) > (work_h - border):
             continue
 
-        # Reject too large blobs (noise or background cracks)
+        # Reject too large blobs (merged characters, background patches)
         if w > max_w or h > max_h:
             continue
 
-        # Reject extreme aspect ratios (long horizontal cracks)
+        # Reject extreme aspect ratios (cracks, hairlines)
         aspect = w / h if h > 0 else 999
-        if aspect > 8 or aspect < 0.1:
+        if aspect > 8.0 or aspect < 0.12:
             continue
 
         # Reject tiny noise
@@ -362,10 +385,8 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         return []
 
     # ── STEP 10: Cluster regions into lines ───────────────────────────────────
-    # Sort by y-center
     regions_work.sort(key=lambda r: r["y"] + r["h"] / 2)
 
-    # Adaptive line gap: if not many regions, use larger gap to merge stray boxes
     line_gap = params["line_gap"]
     if len(regions_work) < 10:
         line_gap = max(line_gap, work_h // 8)
@@ -386,17 +407,11 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     for i, r in enumerate(regions_work):
         r["_id"] = i + 1
 
-    # ── STEP 12: Build output list and debug visualization ───────────────────
+    # ── STEP 12: Build output + debug visualization ───────────────────────────
     LINE_COLORS = [
-        (0,   0,   255),
-        (0,   200,   0),
-        (255,   0,   0),
-        (0,   200, 200),
-        (200,   0, 200),
-        (0,   165, 255),
-        (128,   0, 128),
-        (0,   128, 128),
-        (255, 165,   0),
+        (0,   0,   255), (0,   200,   0), (255,   0,   0),
+        (0,   200, 200), (200,   0, 200), (0,   165, 255),
+        (128,   0, 128), (0,   128, 128), (255, 165,   0),
         (0,   255, 165),
     ]
 
@@ -408,13 +423,11 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         region_id = r["_id"]
         color = LINE_COLORS[(r["line"] - 1) % len(LINE_COLORS)]
 
-        # Map work-space → original image coordinates
         ox = int(rx * sx_orig)
         oy = int(ry * sy_orig)
         ow = int(rw * sx_orig)
         oh = int(rh * sy_orig)
 
-        # Clamp to image bounds
         x1 = max(0, ox)
         y1 = max(0, oy)
         x2 = min(orig_w, ox + ow)
@@ -431,7 +444,6 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
             "crop": crop,
         })
 
-        # Draw colored rectangle and label on debug image
         cv2.rectangle(debug_vis, (x1, y1), (x2, y2), color, 2)
         cv2.putText(
             debug_vis, str(region_id),
