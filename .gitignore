@@ -8,3 +8,8 @@ debug/
 TAMIL SCRIPT DATASET/
 testing 1.jpg
 testing 2.jpg
+
+# Large model files
+models/*.zip
+models/*.pt
+*.pt

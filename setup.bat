@@ -72,13 +72,13 @@ echo    1. Double-click  run_backend.bat   (starts API on :8000)
 echo    2. Double-click  run_frontend.bat  (starts UI  on :5173)
 echo.
 echo  To train the model:
-echo    python "%~dp0backend\train.py"
+echo    python "%~dp0scripts\training\train.py"
 echo.
 echo  To test the pipeline:
-echo    python test_pipeline.py --image "path\to\inscription.jpg"
+echo    python scripts\tools\test_pipeline.py --image "data\testing\testing 2.jpg"
 echo.
 echo  To check the dataset:
-echo    python check_dataset.py
+echo    python scripts\tools\check_dataset.py
 echo ============================================================
 echo.
 pause

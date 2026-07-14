@@ -74,15 +74,17 @@ You can also run the following commands from the command prompt (ensure the virt
 
 - **Train the Model:**
   ```cmd
-  python backend\train.py
+  python scripts\training\train.py
   ```
 
 - **Test the Pipeline with a Specific Image:**
   ```cmd
-  python test_pipeline.py --image "path\to\inscription.jpg"
+  python scripts\tools\test_pipeline.py --image "data\testing\testing 2.jpg"
   ```
 
 - **Check Dataset Integrity:**
   ```cmd
-  python check_dataset.py
+  python scripts\tools\check_dataset.py
   ```
+
+For more detailed setup instructions, please see [docs/startup.md](docs/startup.md).
