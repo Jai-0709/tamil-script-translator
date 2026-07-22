@@ -81,6 +81,41 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose }
             </div>
           </div>
 
+          {/* Ambiguous NLP Options */}
+          {word.ambiguous_options && word.ambiguous_options.length > 1 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6,
+                textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Contextual Alternatives (Same Shape)
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {word.ambiguous_options.map((alt, i) => {
+                  const isCurrent = alt === word.modern_tamil;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => { if (!isCurrent) { onCorrect(word.id, alt); onClose(); } }}
+                      style={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        padding: '6px 12px', borderRadius: 8, cursor: isCurrent ? 'default' : 'pointer',
+                        background: isCurrent ? 'rgba(249,115,22,0.1)' : 'var(--bg-card-3)',
+                        border: `1px solid ${isCurrent ? 'rgba(249,115,22,0.3)' : 'var(--border)'}`,
+                        transition: 'background 0.1s',
+                        minWidth: 50,
+                      }}
+                      title={isCurrent ? "Currently selected by NLP Engine" : `Override NLP and select ${alt}`}
+                    >
+                      <span className="tamil-text" style={{ fontSize: 22, fontWeight: 700,
+                        color: isCurrent ? 'var(--accent)' : 'var(--text-primary)' }}>
+                        {alt}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Top-3 alternatives */}
           {top3.length > 1 && (
             <div style={{ marginBottom: 10 }}>

@@ -3,6 +3,11 @@ backend/__pycache__/
 *.pyc
 venv/
 .env
+frontend/node_modules/
+backend/__pycache__/
+*.pyc
+venv/
+.env
 !.env.production
 debug/
 TAMIL SCRIPT DATASET/
@@ -13,3 +18,10 @@ testing 2.jpg
 models/*.zip
 models/*.pt
 *.pt
+models/*.pth
+
+# Datasets
+CLEANED DATA SET/
+dataset/
+data/
+yolo_dataset/

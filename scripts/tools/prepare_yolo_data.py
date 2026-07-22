@@ -7,8 +7,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 INPUT_DIR = str(ROOT_DIR / "data" / "raw_images")       # Folder containing your large inscription images
 OUTPUT_DIR = str(ROOT_DIR / "data" / "yolo_dataset")    # Folder where sliced 640x640 images will be saved
-TILE_SIZE = 640
-OVERLAP = 100                  # Overlap between tiles so characters aren't cut in half
+TILE_SIZE = 1280
+OVERLAP = 200                  # Overlap between tiles so characters aren't cut in half
 
 def slice_image(image_path, output_dir):
     img = cv2.imread(image_path)

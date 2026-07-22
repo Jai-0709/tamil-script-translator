@@ -232,13 +232,17 @@ export default function OriginalImageViewer({
         }}
       />
 
-      {/* ── Zoom panel — top-right corner, visible only when hovering ── */}
-      {hoveredWordId && (
-        <div style={{
-          position: 'absolute',
-          top: 10,
-          right: 10,
-          width:  ZOOM_SIZE,
+      {/* ── Zoom panel — dynamically avoids covering the hovered character ── */}
+      {hoveredWordId && (() => {
+        const hoveredWord = words.find(w => w.id === hoveredWordId);
+        const isRightHalf = hoveredWord && imageWidth && (hoveredWord.x > imageWidth / 2);
+        return (
+          <div style={{
+            position: 'absolute',
+            top: 10,
+            right: isRightHalf ? undefined : 10,
+            left: isRightHalf ? 10 : undefined,
+            width:  ZOOM_SIZE,
           height: ZOOM_SIZE,
           borderRadius: 12,
           border: '2px solid #f97316',
@@ -279,7 +283,8 @@ export default function OriginalImageViewer({
             }}
           />
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

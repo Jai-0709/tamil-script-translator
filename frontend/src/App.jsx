@@ -23,8 +23,10 @@ function saveCorrections(c) {
 export default function App() {
   const [imageFile, setImageFile]         = useState(null)
   const [imageURL, setImageURL]           = useState(null)
+  const [displayImageURL, setDisplayImageURL] = useState(null)
   const [apiResponse, setApiResponse]     = useState(null)
   const [isLoading, setIsLoading]         = useState(false)
+  const [isRefetching, setIsRefetching]   = useState(false)
   const [error, setError]                 = useState(null)
   const [hoveredWordId, setHoveredWordId] = useState(null)
 
@@ -40,10 +42,17 @@ export default function App() {
   const [selectedRegion, setSelectedRegion] = useState(null)
   const imageNaturalRef                   = useRef({ w: 0, h: 0 })
 
+  // Feature 4 — Smart Hybrid YOLO Segmentation Toggle
+  const [segmentMode, setSegmentMode]     = useState('smart') // 'smart' or 'classic'
+
+  // Feature 5 — Merge Distance
+  const [mergeGap, setMergeGap]           = useState(4)
+
   function handleFileSelect(file) {
     setImageFile(file)
     const url = URL.createObjectURL(file)
     setImageURL(url)
+    setDisplayImageURL(url)
     setApiResponse(null)
     setError(null)
     setHoveredWordId(null)
@@ -60,30 +69,39 @@ export default function App() {
     img.src = url
   }
 
-  async function handleTranslate() {
+  async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion) {
     if (!imageFile) return
-    setIsLoading(true)
+    
+    if (!apiResponse) setIsLoading(true)
+    else setIsRefetching(true)
+    
     setError(null)
     setCorrections({})
     try {
       let blob = imageFile
+      let finalDisplayURL = imageURL
 
       // Feature 3: crop image to selectedRegion before sending
-      if (selectedRegion) {
-        blob = await cropImageToBlob(imageURL, selectedRegion)
+      if (regionOverride) {
+        blob = await cropImageToBlob(imageURL, regionOverride)
+        finalDisplayURL = URL.createObjectURL(blob)
       }
 
       const form = new FormData()
       form.append('file', blob, imageFile.name)
+      form.append('mode', segmentMode) // pass the mode
+      form.append('merge_gap', gapOverride) // use the override
       const { data } = await axios.post(`${BACKEND_URL}/translate`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setApiResponse(data)
+      setDisplayImageURL(finalDisplayURL)
       setRegionMode(false)
     } catch (err) {
       setError(err?.response?.data?.detail || err?.message || 'Unknown error from server.')
     } finally {
       setIsLoading(false)
+      setIsRefetching(false)
     }
   }
 
@@ -175,8 +193,7 @@ export default function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Pill>EfficientNet-B0</Pill>
-          <Pill>64 classes</Pill>
+
           {hasResult && <Pill accent>✓ {words.length} words detected</Pill>}
           {Object.keys(corrections).length > 0 && (
             <Pill green>✏️ {Object.keys(corrections).length} corrected</Pill>
@@ -193,65 +210,71 @@ export default function App() {
       }}>
         <UploadZone
           onFileSelect={handleFileSelect}
-          onTranslate={handleTranslate}
+          onTranslate={() => handleTranslate(mergeGap)}
           imageFile={imageFile}
           imageURL={imageURL}
-          isLoading={isLoading}
+          isLoading={isLoading || isRefetching}
         />
 
         {/* ── Feature 3: Region mode toggle ── */}
-        {imageURL && !hasResult && (
-          <button
-            onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              padding: '5px 12px', borderRadius: 6, border: 'none',
-              fontSize: 11, fontWeight: 600, cursor: 'pointer',
-              background: regionMode ? 'rgba(249,115,22,0.15)' : 'var(--bg-card-3)',
-              color: regionMode ? 'var(--accent)' : 'var(--text-secondary)',
-              outline: regionMode ? '1px solid rgba(249,115,22,0.4)' : 'none',
-              transition: 'all 0.15s',
-            }}
-            title="Draw a rectangle to focus on a specific region of the inscription"
-          >
-            🔲 {regionMode ? 'Region Mode ON' : 'Select Region'}
-          </button>
+        {imageURL && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                padding: '5px 12px', borderRadius: 6, border: 'none',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                background: regionMode ? 'rgba(249,115,22,0.15)' : 'var(--bg-card-3)',
+                color: regionMode ? 'var(--accent)' : 'var(--text-secondary)',
+                outline: regionMode ? '1px solid rgba(249,115,22,0.4)' : 'none',
+                transition: 'all 0.15s',
+              }}
+              title="Draw a rectangle to focus on a specific region of the inscription"
+            >
+              🔲 {regionMode ? 'Region Mode ON' : 'Select Region'}
+            </button>
+
+
+          </div>
         )}
 
-        {/* ── Feature 1: Confidence threshold slider ── */}
-        {hasResult && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+        {/* ── Feature 5: Merge Gap slider (only if Smart mode) ── */}
+        {imageURL && segmentMode === 'smart' && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12, borderLeft: '1px solid var(--border)' }}>
             <span style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              Min Confidence:
+              Merge Dist:
             </span>
             <input
-              type="range" min={0} max={90} step={5}
-              value={threshold}
-              onChange={e => setThreshold(Number(e.target.value))}
-              style={{ width: 90, accentColor: '#f97316', cursor: 'pointer' }}
-              title="Hide characters below this confidence level"
+              type="range" min={0} max={20} step={1}
+              value={mergeGap}
+              onChange={e => setMergeGap(Number(e.target.value))}
+              onPointerUp={() => handleTranslate(mergeGap)}
+              style={{ width: 60, accentColor: '#f97316', cursor: 'pointer' }}
+              title="Max distance to automatically join split strokes together"
             />
             <span style={{
-              fontSize: 11, fontWeight: 700, minWidth: 34, textAlign: 'right',
-              color: threshold > 50 ? '#ef4444' : threshold > 25 ? '#f59e0b' : 'var(--text-secondary)',
+              fontSize: 11, fontWeight: 700, minWidth: 26,
+              color: mergeGap > 0 ? '#f97316' : 'var(--text-secondary)',
             }}>
-              {threshold}%
+              {mergeGap}px
             </span>
+          </div>
+        )}
 
-            {/* Download corrections */}
-            {Object.keys(corrections).length > 0 && (
-              <button
-                onClick={downloadCorrections}
-                style={{
-                  padding: '4px 10px', borderRadius: 6, border: 'none',
-                  background: 'rgba(34,197,94,0.12)', color: '#22c55e',
-                  fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                }}
-                title="Download all corrections as JSON for retraining"
-              >
-                ⬇ Save Corrections
-              </button>
-            )}
+        {/* Download corrections */}
+        {hasResult && Object.keys(corrections).length > 0 && (
+          <div style={{ marginLeft: 'auto' }}>
+            <button
+              onClick={downloadCorrections}
+              style={{
+                padding: '4px 10px', borderRadius: 6, border: 'none',
+                background: 'var(--green)', color: '#fff',
+                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              📥 Export Fixes ({Object.keys(corrections).length})
+            </button>
           </div>
         )}
       </div>
@@ -310,7 +333,10 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ padding: 12, display: 'flex', justifyContent: 'center' }}>
+            <div style={{
+              padding: 12, display: 'flex', justifyContent: 'center',
+              opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
+            }}>
               {imageURL ? (
                 regionMode ? (
                   <RegionSelector
@@ -323,7 +349,7 @@ export default function App() {
                   />
                 ) : (
                   <InscriptionCanvas
-                    imageURL={imageURL}
+                    imageURL={displayImageURL}
                     words={words}
                     imageWidth={apiResponse?.image_width}
                     imageHeight={apiResponse?.image_height}
@@ -343,8 +369,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── PANEL 2: Original image ── */}
-          {imageURL && (
+          {displayImageURL && (
             <div style={{ flexShrink: 0 }}>
               <div style={{
                 position: 'sticky', top: 0, zIndex: 10,
@@ -356,9 +381,12 @@ export default function App() {
                 <span style={{ fontSize: 12 }}>🖼️</span>
                 Original Image — No boxes, read the full inscription
               </div>
-              <div style={{ padding: 12, display: 'flex', justifyContent: 'center' }}>
+              <div style={{ 
+                padding: 12, display: 'flex', justifyContent: 'center',
+                opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
+              }}>
                 <OriginalImageViewer
-                  imageURL={imageURL}
+                  imageURL={displayImageURL}
                   words={words}
                   imageWidth={apiResponse?.image_width}
                   imageHeight={apiResponse?.image_height}
@@ -396,6 +424,8 @@ export default function App() {
             <SentenceOutput
               fullSentence={effectiveSentence}
               romanSentence={apiResponse?.roman_sentence || ""}
+              alternativeSentences={apiResponse?.alternative_sentences || []}
+              alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
               wordCount={apiResponse?.word_count || 0}
               lineCount={apiResponse?.line_count || 0}
             />
@@ -408,17 +438,29 @@ export default function App() {
 
 /* ── Crop image to region (client-side) ─────────────────────────────────── */
 async function cropImageToBlob(imageURL, region) {
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width  = region.w
-      canvas.height = region.h
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(img, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h)
-      canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.95)
+  return new Promise((resolve, reject) => {
+    try {
+      const img = new Image()
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width  = region.w
+          canvas.height = region.h
+          const ctx = canvas.getContext('2d')
+          ctx.drawImage(img, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h)
+          canvas.toBlob(blob => {
+            if (blob) resolve(blob)
+            else reject(new Error('Failed to create image blob'))
+          }, 'image/jpeg', 0.95)
+        } catch (err) {
+          reject(err)
+        }
+      }
+      img.onerror = () => reject(new Error('Failed to load image for cropping'))
+      img.src = imageURL
+    } catch (err) {
+      reject(err)
     }
-    img.src = imageURL
   })
 }
 

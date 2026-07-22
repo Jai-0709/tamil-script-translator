@@ -28,6 +28,26 @@ from typing import Dict, List, Optional, Tuple
 import cv2
 import numpy as np
 
+try:
+    from ultralytics import YOLO
+except ImportError:
+    YOLO = None
+
+# Attempt to load YOLO model
+_YOLO_MODEL = None
+_YOLO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "best.pt")
+if not os.path.exists(_YOLO_PATH):
+    _YOLO_PATH = os.path.join(os.path.dirname(__file__), "best.pt")
+
+if YOLO and os.path.exists(_YOLO_PATH):
+    try:
+        _YOLO_MODEL = YOLO(_YOLO_PATH)
+        print(f"[SEG] Loaded YOLO model from {_YOLO_PATH}")
+    except Exception as e:
+        print(f"[WARN] Failed to load YOLO model: {e}")
+else:
+    print("[WARN] YOLO model not found or ultralytics not installed. Smart Mode will fallback to Classic.")
+
 # ---------------------------------------------
 #  Optional debug image saving
 # ---------------------------------------------
@@ -463,12 +483,14 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
 #  Public API
 # ---------------------------------------------
 
-def segment_words(image_bgr: np.ndarray) -> List[Dict]:
+def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int = 4) -> List[Dict]:
     """
     Segment an inscription image into character-level bounding boxes.
 
     Args:
         image_bgr: BGR numpy array (uint8).
+        mode: "smart" (YOLO hybrid) or "classic" (OpenCV only).
+        merge_gap_x: Max horizontal gap (in px) to auto-merge split YOLO boxes.
 
     Returns:
         List of dicts with: id, x, y, w, h, line, crop
@@ -501,79 +523,257 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     img_type = _detect_image_type(gray)
     print(f"[SEG] Image type: {img_type}")
 
-    # -- STEP 4: Best binary mask via multi-strategy scoring -------------------
-    binary = _best_binary(gray, img_type, work_w, work_h)
-    _save_debug("04_binary.jpg", binary)
-
-    # -- STEP 5: Per-type filter parameters ------------------------------------
     params = _filter_params(work_w, work_h, img_type)
     print(f"[SEG] Filter params: {params}")
 
-    # -- STEP 6: Strip border region -------------------------------------------
-    border = params["border"]
-    binary[:border, :]  = 0
-    binary[-border:, :] = 0
-    binary[:, :border]  = 0
-    binary[:, -border:] = 0
+    # =========================================================================
+    # SMART HYBRID MODE (YOLO + OpenCV Precision)
+    # =========================================================================
+    if mode == "smart" and _YOLO_MODEL is not None:
+        print("[SEG] Running SMART HYBRID mode (YOLO Tiled Inference)")
+        
+        TILE_SIZE = 1280
+        OVERLAP = 640 # 50% overlap guarantees no character gets cut in half at a seam!
+        h, w = image_bgr.shape[:2]
+        yolo_boxes = []
+        
+        yolo_scores = []
+        
+        # Sliced Inference (just like training data!)
+        print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles...")
+        for y in range(0, max(1, h), max(1, TILE_SIZE - OVERLAP)):
+            for x in range(0, max(1, w), max(1, TILE_SIZE - OVERLAP)):
+                y2 = min(y + TILE_SIZE, h)
+                x2 = min(x + TILE_SIZE, w)
+                y1 = max(0, y2 - TILE_SIZE)
+                x1 = max(0, x2 - TILE_SIZE)
+                
+                if y1 >= y2 or x1 >= x2:
+                    continue
+                    
+                tile = image_bgr[y1:y2, x1:x2]
+                # Maximum sensitivity: conf=0.10, augment=True (TTA), iou=0.5
+                results = _YOLO_MODEL(tile, conf=0.10, iou=0.50, augment=True, verbose=False)
+                boxes = results[0].boxes.xyxy.cpu().numpy()
+                confs = results[0].boxes.conf.cpu().numpy()
+                
+                for i in range(len(boxes)):
+                    box = boxes[i]
+                    # Translate to original full-image coordinates (format: x, y, w, h for NMS)
+                    bx = int(box[0] + x1)
+                    by = int(box[1] + y1)
+                    bw = int(box[2] - box[0])
+                    bh = int(box[3] - box[1])
+                    yolo_boxes.append([bx, by, bw, bh])
+                    yolo_scores.append(float(confs[i]))
+                
+                if x2 >= w: break
+            if y2 >= h: break
 
+        # Apply NMS to remove duplicates across overlapping slices
+        if len(yolo_boxes) > 0:
+            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.1, nms_threshold=0.4)
+            if len(indices) > 0:
+                indices = indices.flatten()
+                
+                # ── Apply Containment / High Overlap Filter ──
+                # cv2.dnn.NMSBoxes uses IoU. If a tiny box is inside a huge box, IoU is small, so it keeps both.
+                # We need IoM (Intersection over Minimum Area) to suppress completely enveloped boxes.
+                boxes_with_scores = [(yolo_boxes[i], yolo_scores[i]) for i in indices]
+                # Sort descending by AREA so we evaluate the largest boxes first!
+                # This prevents a tiny sub-feature box (like a dot) from suppressing the main character box
+                # just because the tiny box had a slightly higher YOLO confidence score.
+                boxes_with_scores.sort(key=lambda x: x[0][2] * x[0][3], reverse=True)
+                
+                final_yolo_boxes = []
+                for box, score in boxes_with_scores:
+                    bx, by, bw, bh = box
+                    x1_a, y1_a = bx, by
+                    x2_a, y2_a = bx + bw, by + bh
+                    area_a = bw * bh
+                    
+                    is_contained = False
+                    for kept_box in final_yolo_boxes:
+                        x1_b, y1_b, x2_b, y2_b = kept_box
+                        area_b = (x2_b - x1_b) * (y2_b - y1_b)
+                        
+                        ix1 = max(x1_a, x1_b)
+                        iy1 = max(y1_a, y1_b)
+                        ix2 = min(x2_a, x2_b)
+                        iy2 = min(y2_a, y2_b)
+                        
+                        if ix1 < ix2 and iy1 < iy2:
+                            inter_area = (ix2 - ix1) * (iy2 - iy1)
+                            # If intersection is >80% of the smaller box, they are essentially the same region
+                            if inter_area > 0.8 * min(area_a, area_b):
+                                is_contained = True
+                                break
+                                
+                    if not is_contained:
+                        final_yolo_boxes.append([x1_a, y1_a, x2_a, y2_a])
+                        
+                yolo_boxes = final_yolo_boxes
+            else:
+                yolo_boxes = []
+
+        # If YOLO found nothing, fallback to classic
+        if len(yolo_boxes) == 0:
+            print("[SEG] YOLO found no boxes, falling back to Classic mode.")
+        else:
+            print(f"[SEG] Found {len(yolo_boxes)} total raw YOLO boxes. Mapping to work resolution.")
+            regions = []
+            for box in yolo_boxes:
+                # YOLO boxes are in original resolution. We need them in work resolution.
+                x1_orig, y1_orig, x2_orig, y2_orig = [int(v) for v in box]
+                x1_work = int(x1_orig / sx)
+                y1_work = int(y1_orig / sy)
+                x2_work = int(x2_orig / sx)
+                y2_work = int(y2_orig / sy)
+                
+                w_work = x2_work - x1_work
+                h_work = y2_work - y1_work
+                
+                # Reject impossibly small boxes (like 2px wide border slivers)
+                if w_work < 10 or h_work < 10:
+                    continue
+                    
+                # Reject extreme aspect ratios (cracks in the stone)
+                # Tamil characters are rarely flatter than 4.5x or skinnier than 0.25x
+                aspect_ratio = w_work / h_work
+                if aspect_ratio > 4.5 or aspect_ratio < 0.25:
+                    print(f"[SEG] Rejecting YOLO box with extreme aspect ratio (crack): w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
+                    continue
+                
+                # YOLO already perfectly bounds the whole character
+                regions.append({"x": x1_work, "y": y1_work, "w": w_work, "h": h_work, "line": 0})
+                
+            if len(regions) > 0:
+                widths = sorted([r["w"] for r in regions])
+                heights = sorted([r["h"] for r in regions])
+                char_w_est = widths[len(widths) // 2]
+                char_h_est = heights[len(heights) // 2]
+                
+                # Filter out partial characters from adjacent lines (caught at top/bottom edges of crop)
+                filtered_regions = []
+                for r in regions:
+                    # Touches the very top or bottom edge of the image
+                    is_top = r["y"] < (char_h_est * 0.25)
+                    is_bottom = (r["y"] + r["h"]) > (work_h - char_h_est * 0.25)
+                    
+                    # If it's a top/bottom edge box AND it's noticeably shorter than normal characters, it's a cut-off
+                    if (is_top or is_bottom) and r["h"] < (char_h_est * 0.65):
+                        print(f"[SEG] Rejecting partial top/bottom edge character: y={r['y']}, h={r['h']} (median_h={char_h_est})")
+                        continue
+
+                    # Touches the very left or right edge of the image
+                    is_left = r["x"] < (char_w_est * 0.25)
+                    is_right = (r["x"] + r["w"]) > (work_w - char_w_est * 0.25)
+                    
+                    # If it's a left/right edge box AND it's noticeably thinner than normal characters, it's a cut-off
+                    if (is_left or is_right) and r["w"] < (char_w_est * 0.55):
+                        print(f"[SEG] Rejecting partial left/right edge character: x={r['x']}, w={r['w']} (median_w={char_w_est})")
+                        continue
+                        
+                    filtered_regions.append(r)
+                regions = filtered_regions
+            else:
+                char_w_est = max(15, work_w // 30)
+                char_h_est = max(15, work_h // 10)
+            
+            # Use the dynamically provided merge_gap_x (from UI slider)
+            # Add a small vertical tolerance based on the horizontal gap to handle misaligned strokes
+            merge_gap_y = max(2, merge_gap_x // 4)
+            
+            # The higher the user sets the slider, the larger the merged box is allowed to be.
+            # At 20px gap, multiplier is 3.5x median width.
+            multiplier = 1.5 + (merge_gap_x / 10.0)
+
+            before_merge = len(regions)
+            if merge_gap_x > 0:
+                regions = _merge_nearby_boxes(
+                    regions, 
+                    merge_x=merge_gap_x, 
+                    merge_y=merge_gap_y, 
+                    max_w=int(char_w_est * multiplier),
+                    max_h=int(char_h_est * multiplier)
+                )
+                print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
+
+
+
+    border   = params["border"]
     min_w    = params["min_w"]
     min_h    = params["min_h"]
     min_area = params["min_area"]
     max_w    = params["max_w"]
     max_h    = params["max_h"]
 
-    def _extract_regions(mask: np.ndarray) -> List[Dict]:
-        """Find contours from mask and apply size/aspect filters."""
-        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        result = []
-        for cnt in cnts:
-            x, y, w, h = cv2.boundingRect(cnt)
-            area = w * h
-            if x < border or y < border:
-                continue
-            if (x + w) > (work_w - border):
-                continue
-            if (y + h) > (work_h - border):
-                continue
-            if w > max_w or h > max_h:
-                continue
-            if w < min_w or h < min_h:
-                continue
-            if area < min_area:
-                continue
-            asp = w / h if h > 0 else 999
-            if asp > 8.0 or asp < 0.12:
-                continue
-            result.append({"x": x, "y": y, "w": w, "h": h, "line": 0})
-        return result
+    # =========================================================================
+    # CLASSIC MODE (OpenCV Only) - OR FALLBACK
+    # =========================================================================
+    if mode != "smart" or _YOLO_MODEL is None or len(yolo_boxes) == 0:
+        print("[SEG] Running CLASSIC mode (OpenCV)")
+        # -- STEP 4: Best binary mask via multi-strategy scoring -------------------
+        binary = _best_binary(gray, img_type, work_w, work_h)
+        _save_debug("04_binary.jpg", binary)
 
-    # -- STEP 7: Try raw binary first, then with dilation, keep the better one --
-    # CRITICAL: On stone images, large dilation merges all characters into
-    # a few giant blobs which are then rejected by the max_w/max_h filter.
-    # By evaluating BOTH, we always pick the approach that detects more chars.
-    regions_raw = _extract_regions(binary)
-    print(f"[SEG] Raw binary -> {len(regions_raw)} regions")
+        # -- STEP 6: Strip border region -------------------------------------------
+        binary[:border, :]  = 0
+        binary[-border:, :] = 0
+        binary[:, :border]  = 0
+        binary[:, -border:] = 0
 
-    if params["k_w"] > 1 or params["k_h"] > 1:
-        k_word  = cv2.getStructuringElement(cv2.MORPH_RECT, (params["k_w"], params["k_h"]))
-        dilated = cv2.dilate(binary, k_word, iterations=1)
-        _save_debug("05_dilated.jpg", dilated)
-        regions_dil = _extract_regions(dilated)
-        print(f"[SEG] Dilated ({params['k_w']}x{params['k_h']}) -> {len(regions_dil)} regions")
 
-        # Pick whichever gives more surviving regions
-        if len(regions_raw) >= len(regions_dil):
-            regions = regions_raw
-            print("[SEG] Using raw binary (more regions)")
+        def _extract_regions(mask: np.ndarray) -> List[Dict]:
+            """Find contours from mask and apply size/aspect filters."""
+            cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            result = []
+            for cnt in cnts:
+                x, y, w, h = cv2.boundingRect(cnt)
+                area = w * h
+                if x < border or y < border:
+                    continue
+                if (x + w) > (work_w - border):
+                    continue
+                if (y + h) > (work_h - border):
+                    continue
+                if w > max_w or h > max_h:
+                    continue
+                if w < min_w or h < min_h:
+                    continue
+                if area < min_area:
+                    continue
+                asp = w / h if h > 0 else 999
+                if asp > 8.0 or asp < 0.12:
+                    continue
+                result.append({"x": x, "y": y, "w": w, "h": h, "line": 0})
+            return result
+
+        # -- STEP 7: Try raw binary first, then with dilation, keep the better one --
+        regions_raw = _extract_regions(binary)
+        print(f"[SEG] Raw binary -> {len(regions_raw)} regions")
+
+        if params["k_w"] > 1 or params["k_h"] > 1:
+            k_word  = cv2.getStructuringElement(cv2.MORPH_RECT, (params["k_w"], params["k_h"]))
+            dilated = cv2.dilate(binary, k_word, iterations=1)
+            _save_debug("05_dilated.jpg", dilated)
+            regions_dil = _extract_regions(dilated)
+            print(f"[SEG] Dilated ({params['k_w']}x{params['k_h']}) -> {len(regions_dil)} regions")
+
+            # Pick whichever gives more surviving regions
+            if len(regions_raw) >= len(regions_dil):
+                regions = regions_raw
+                print("[SEG] Using raw binary (more regions)")
+            else:
+                regions = regions_dil
+                print("[SEG] Using dilated binary (more regions)")
         else:
-            regions = regions_dil
-            print("[SEG] Using dilated binary (more regions)")
-    else:
-        regions = regions_raw
-        _save_debug("05_dilated.jpg", binary)
-        print("[SEG] Skipping dilation (k_w=1, k_h=1)")
+            regions = regions_raw
+            _save_debug("05_dilated.jpg", binary)
+            print("[SEG] Skipping dilation (k_w=1, k_h=1)")
 
-    print(f"[SEG] After size filter: {len(regions)}")
+
+    print(f"[SEG] After size filter / generation: {len(regions)}")
 
     # -- STEP 8: Remove noise fragments (median-area filter) ----------------------
     # Proximity merge is INTENTIONALLY disabled for all types:
@@ -585,7 +785,7 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     char_w_est = max(15, work_w // 30)
     char_h_est = max(15, work_h // 10)
 
-    if regions:
+    if mode != "smart" and regions:
         areas = sorted([r["w"] * r["h"] for r in regions])
         median_area = areas[len(areas) // 2]
         # Keep blobs >= 18% of median area (removes isolated dust/cracks/serifs)
@@ -596,7 +796,8 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
 
 
     # -- STEP 9: Overlap removal -----------------------------------------------
-    regions = _remove_overlaps(regions, overlap_thresh=0.45)
+    thresh = 0.85 if mode == "smart" else 0.45
+    regions = _remove_overlaps(regions, overlap_thresh=thresh)
     print(f"[SEG] After overlap removal: {len(regions)}")
 
     if not regions:
@@ -604,7 +805,9 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
         return []
 
     # -- STEP 10: Cluster into lines -------------------------------------------
-    regions.sort(key=lambda r: r["y"] + r["h"] / 2)
+    # For Tamil script, the top of the characters (y) is much more aligned than the center or bottom,
+    # because descenders (like ழு, மு, நா) can wildly change the center y-coordinate.
+    regions.sort(key=lambda r: r["y"])
 
     # Use median box height to compute a robust line gap threshold
     heights = sorted([r["h"] for r in regions])
@@ -615,12 +818,12 @@ def segment_words(image_bgr: np.ndarray) -> List[Dict]:
     print(f"[SEG] Line gap: {line_gap}px  (median_h={median_h}px)")
 
     line_num = 1
-    cur_yc   = regions[0]["y"] + regions[0]["h"] / 2
+    cur_y = regions[0]["y"]
     for r in regions:
-        yc = r["y"] + r["h"] / 2
-        if yc - cur_yc > line_gap:
+        y = r["y"]
+        if y - cur_y > line_gap:
             line_num += 1
-            cur_yc = yc
+            cur_y = y
         r["line"] = line_num
 
     print(f"[SEG] Lines detected: {line_num}")

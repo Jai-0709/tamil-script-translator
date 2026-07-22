@@ -40,6 +40,13 @@ try:
 except ImportError:
     ALBU_AVAILABLE = False
 
+try:
+    import timm
+    TIMM_AVAILABLE = True
+except ImportError:
+    TIMM_AVAILABLE = False
+    print("[WARNING] 'timm' library not found. ViT training requires timm. Run: pip install timm")
+
 warnings.filterwarnings("ignore")
 
 # ─────────────────────────────────────────────
@@ -50,25 +57,35 @@ KAGGLE_INPUT = Path("/kaggle/input")
 DATA_DIR = None
 
 if KAGGLE_INPUT.exists():
-    print("[INFO] Running on Kaggle. Searching for 'dataset_clean'...")
-    for p in KAGGLE_INPUT.rglob("dataset_clean"):
+    print("[INFO] Running on Kaggle. Searching for 'train' folder...")
+    for p in KAGGLE_INPUT.rglob("train"):
         if p.is_dir():
             DATA_DIR = p
             break
 
 if DATA_DIR is None:
-    # Local fallback
-    DATA_DIR = Path(__file__).resolve().parent / "TAMIL SCRIPT DATASET" / "dataset_clean"
+    # Local fallback, safely handling __file__ if in a notebook
+    try:
+        base_path = Path(__file__).resolve().parent
+    except NameError:
+        base_path = Path.cwd()
+    DATA_DIR = base_path / "dataset" / "classification" / "train"
 
 if not DATA_DIR.exists():
     print(f"[ERROR] Dataset directory not found at: {DATA_DIR}")
-    print("Please upload the 'dataset_clean' folder and add it to this notebook.")
+    print("Please upload the dataset zip and ensure it contains the 'train' folder.")
+    import sys
     sys.exit(1)
 
 print(f"[INFO] Using dataset path: {DATA_DIR}")
 
 # Output paths
-OUT_DIR = Path("/kaggle/working") if KAGGLE_INPUT.exists() else Path(__file__).resolve().parent / "models"
+try:
+    base_path_out = Path(__file__).resolve().parent
+except NameError:
+    base_path_out = Path.cwd()
+
+OUT_DIR = Path("/kaggle/working") if KAGGLE_INPUT.exists() else base_path_out / "models"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL_PATH = OUT_DIR / "ancient_tamil_classifier.pth"
@@ -180,27 +197,26 @@ if ALBU_AVAILABLE:
 #  MODEL SETUP
 # ─────────────────────────────────────────────
 def build_model(num_classes: int):
-    try:
-        from efficientnet_pytorch import EfficientNet
-        model = EfficientNet.from_pretrained("efficientnet-b0")
-        in_features = model._fc.in_features
-        model._fc = nn.Linear(in_features, num_classes)
-        print("[INFO] Loaded efficientnet_pytorch EfficientNet-B0")
-    except ImportError:
-        model = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
-        in_features = model.classifier[1].in_features
-        model.classifier[1] = nn.Linear(in_features, num_classes)
-        print("[INFO] Loaded torchvision EfficientNet-B0")
+    if not TIMM_AVAILABLE:
+        raise ImportError("timm library is required for Vision Transformer. Run: !pip install timm")
+    
+    # Load a pretrained Vision Transformer (ViT-Tiny)
+    # Patch size 16, Input size 224
+    print("[INFO] Loading Vision Transformer (vit_tiny_patch16_224) via timm...")
+    model = timm.create_model("vit_tiny_patch16_224", pretrained=True, num_classes=num_classes)
     return model
 
 def freeze_backbone(model):
+    # Freeze all layers
     for param in model.parameters():
         param.requires_grad = False
-    if hasattr(model, '_fc'):
-        for param in model._fc.parameters():
+    
+    # Unfreeze only the classification head
+    if hasattr(model, 'head'):
+        for param in model.head.parameters():
             param.requires_grad = True
-    elif hasattr(model, 'classifier'):
-        for param in model.classifier.parameters():
+    elif hasattr(model, 'fc'): # some timm models use fc
+        for param in model.fc.parameters():
             param.requires_grad = True
 
 def unfreeze_all(model):
@@ -295,11 +311,11 @@ def main():
         json.dump(class_to_idx, f, indent=2, ensure_ascii=False)
     print(f"[INFO] Saved class_to_idx.json → {CLASS_IDX_PATH}")
     
-    # Stratified Split (85% Train, 15% Val)
-    from sklearn.model_selection import StratifiedShuffleSplit
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=VAL_SPLIT, random_state=42)
+    # Standard Split (85% Train, 15% Val) 
+    # (Cannot use StratifiedSplit because some classes only have 1 image)
+    from sklearn.model_selection import train_test_split
     indices = np.arange(len(targets))
-    train_idx, val_idx = next(sss.split(indices, targets))
+    train_idx, val_idx = train_test_split(indices, test_size=VAL_SPLIT, random_state=42, stratify=None)
     
     train_raw = Subset(dataset, train_idx)
     val_raw = Subset(dataset, val_idx)
@@ -313,7 +329,21 @@ def main():
     train_ds = TransformSubset(train_raw, base_train_transform)
     val_ds = TransformSubset(val_raw, base_val_transform)
     
-    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, pin_memory=USE_AMP)
+    # Calculate weights for Balanced Sampling (crucial for severe class imbalance!)
+    print("\n[INFO] Calculating class weights for WeightedRandomSampler...")
+    class_counts = [0] * num_classes
+    for idx in train_idx:
+        _, label = dataset.samples[idx]
+        class_counts[label] += 1
+        
+    class_weights = [1.0 / max(1, c) for c in class_counts]
+    sample_weights = [class_weights[dataset.samples[i][1]] for i in train_idx]
+    
+    from torch.utils.data import WeightedRandomSampler
+    sampler = WeightedRandomSampler(weights=sample_weights, num_samples=len(train_idx), replacement=True)
+    
+    # Use the sampler for the train_loader (do NOT use shuffle=True when using a sampler)
+    train_loader = DataLoader(train_ds, batch_size=BATCH_SIZE, sampler=sampler, num_workers=NUM_WORKERS, pin_memory=USE_AMP)
     val_loader = DataLoader(val_ds, batch_size=BATCH_SIZE, shuffle=False, num_workers=NUM_WORKERS, pin_memory=USE_AMP)
     
     model = build_model(num_classes).to(DEVICE)

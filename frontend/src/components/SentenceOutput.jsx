@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-export default function SentenceOutput({ fullSentence, romanSentence, wordCount, lineCount }) {
+export default function SentenceOutput({ fullSentence, romanSentence, wordCount, lineCount, alternativeSentences = [], alternativeRomanSentences = [] }) {
   const [copied, setCopied]         = useState(false)
   const [fontSize, setFontSize]     = useState(24)
   const [isCollapsed, setIsCollapsed] = useState(false)
@@ -199,6 +199,37 @@ export default function SentenceOutput({ fullSentence, romanSentence, wordCount,
           >
             {activeText || '—'}
           </p>
+        </div>
+      )}
+
+      {/* Alternative Readings */}
+      {!isCollapsed && alternativeSentences.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+          <div style={{
+            fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em',
+            textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6
+          }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            Alternative AI Readings
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '200px', overflowY: 'auto', paddingRight: 6 }}>
+            {alternativeSentences.map((altText, idx) => {
+              const textToDisplay = showRoman ? alternativeRomanSentences[idx] : altText
+              return (
+                <div key={idx} style={{
+                  padding: '8px 12px', background: 'var(--bg-card-3)',
+                  borderRadius: 6, border: '1px solid var(--border)',
+                  fontSize: showRoman ? Math.max(12, fontSize - 8) : Math.max(14, fontSize - 6),
+                  color: 'var(--text-secondary)', fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
+                  wordBreak: 'break-word', lineHeight: 1.5, flexShrink: 0
+                }}>
+                  {textToDisplay}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
     </div>
