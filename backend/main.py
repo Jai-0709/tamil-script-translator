@@ -347,7 +347,7 @@ async def translate(
         # Filter out low-confidence noise boxes and user-ignored memory boxes
         valid_indices = [
             i for i in range(len(regions))
-            if not results[i].get("is_ignored") and (results[i].get("is_memorized") or results[i]["confidence"] >= 0.25)
+            if not results[i].get("is_ignored") and (results[i].get("is_memorized") or results[i]["confidence"] >= 0.15)
         ]
         if valid_indices:
             regions = [regions[i] for i in valid_indices]
