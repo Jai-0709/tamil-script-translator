@@ -430,10 +430,10 @@ async def translate(
             all_alt_paths.append((indices, alt_path))
 
     # ── 4. Build response ────────────────────────────────────────────────
-    # Guarantee zero raw commas bleed into modern_tamil results
+    # Guarantee zero raw commas bleed into modern_tamil results for ALL boxes
     for r in results:
         raw_val = str(r.get("modern_tamil", "")).strip()
-        if "," in raw_val and not r.get("is_memorized"):
+        if "," in raw_val:
             r["modern_tamil"] = raw_val.split(",")[0].strip()
 
     words: List[WordResult] = []
