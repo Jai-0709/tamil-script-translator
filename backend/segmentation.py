@@ -483,6 +483,48 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
     )
 
 
+def _is_stone_crack_or_blank(crop_gray: np.ndarray) -> bool:
+    """
+    Analyzes a candidate region crop to determine if it is a blank stone crop
+    or a vertical stone crack / scratch with no real character strokes.
+    """
+    if crop_gray is None or crop_gray.size == 0:
+        return True
+        
+    ch, cw = crop_gray.shape[:2]
+    if ch < 8 or cw < 8:
+        return True
+
+    # 1. Binarize using CLAHE + Adaptive
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+    enhanced = clahe.apply(crop_gray)
+    blurred = cv2.GaussianBlur(enhanced, (3, 3), 0)
+    
+    thresh = cv2.adaptiveThreshold(
+        blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+    )
+    
+    # Calculate stroke pixel density ratio
+    stroke_pixels = cv2.countNonZero(thresh)
+    stroke_density = stroke_pixels / (cw * ch)
+    
+    # If stroke density is extremely low (< 7.5% of crop area), it's empty stone / crack
+    if stroke_density < 0.075:
+        print(f"[SEG] Rejecting box with low stroke density (crack/blank stone): density={stroke_density:.3f}")
+        return True
+        
+    # 2. Check maximum horizontal contour width inside crop
+    cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    max_contour_w = max((cv2.boundingRect(c)[2] for c in cnts), default=0)
+    
+    # If the largest contour inside the box is skinnier than 35% of crop width, it's just a vertical crack line!
+    if max_contour_w < int(cw * 0.35) and cw < int(ch * 0.75):
+        print(f"[SEG] Rejecting box with no horizontal character structure (vertical crack): max_w={max_contour_w}, crop_w={cw}")
+        return True
+        
+    return False
+
+
 def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est: int, char_h_est: int) -> List[Dict]:
     """
     Scans left margin, inter-box gaps, and right margin.
@@ -757,6 +799,13 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
                     if asp < 0.42 and r["w"] < (char_w_est * 0.55):
                         print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
+                        continue
+
+                    # Physical Stroke & Contour Density Verification:
+                    # Rejects blank stone crops, cracks, and scratches with no horizontal character structure
+                    crop_gray = gray[r["y"]:r["y"]+r["h"], r["x"]:r["x"]+r["w"]]
+                    if _is_stone_crack_or_blank(crop_gray):
+                        print(f"[SEG] Rejecting crack/blank box at x={r['x']}, y={r['y']}")
                         continue
 
                     # Absolute noise check
