@@ -214,6 +214,9 @@ export default function App() {
       form.append('y', Math.round(newBox.y))
       form.append('w', Math.round(newBox.w))
       form.append('h', Math.round(newBox.h))
+      if (imageFile && imageFile.name) {
+        form.append('filename', imageFile.name)
+      }
 
       const res = await fetch(`${BACKEND_URL}/api/classify-crop`, {
         method: 'POST',

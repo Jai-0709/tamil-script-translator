@@ -87,6 +87,27 @@ def save_memory():
 
 load_memory()
 
+USER_BOXES_PATH = os.path.join(os.path.dirname(__file__), "user_boxes.json")
+user_boxes_db = {}
+
+def load_user_boxes():
+    global user_boxes_db
+    if os.path.exists(USER_BOXES_PATH):
+        try:
+            with open(USER_BOXES_PATH, "r", encoding="utf-8") as f:
+                user_boxes_db = json.load(f)
+        except Exception:
+            user_boxes_db = {}
+
+def save_user_boxes():
+    try:
+        with open(USER_BOXES_PATH, "w", encoding="utf-8") as f:
+            json.dump(user_boxes_db, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Error saving user boxes: {e}")
+
+load_user_boxes()
+
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
     v2 = np.array(v2)
@@ -231,6 +252,29 @@ async def translate(
                 })
         else:
             regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
+
+        # Merge persistent user-added custom boxes for this image if available
+        fname = getattr(file, "filename", None)
+        if fname and fname in user_boxes_db:
+            saved_boxes = user_boxes_db[fname]
+            existing_boxes = set((r["x"], r["y"], r["w"], r["h"]) for r in regions)
+            for sb in saved_boxes:
+                sx = max(0, int(sb["x"]))
+                sy = max(0, int(sb["y"]))
+                sw = int(sb["w"])
+                sh = int(sb["h"])
+                if (sx, sy, sw, sh) not in existing_boxes:
+                    crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
+                    if crop.size > 0:
+                        regions.append({
+                            "id": len(regions) + 1,
+                            "x": sx, "y": sy, "w": sw, "h": sh,
+                            "line": 1,
+                            "crop": crop
+                        })
+            regions.sort(key=lambda r: (r["line"], r["x"]))
+            for i, r in enumerate(regions):
+                r["_id"] = i + 1
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -448,10 +492,11 @@ async def classify_crop(
     x: int = Form(...),
     y: int = Form(...),
     w: int = Form(...),
-    h: int = Form(...)
+    h: int = Form(...),
+    filename: Optional[str] = Form(None)
 ):
     """
-    Classifies a manually drawn bounding box crop.
+    Classifies a manually drawn bounding box crop and saves it to user_boxes.json.
     """
     raw = await file.read()
     image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
@@ -481,6 +526,18 @@ async def classify_crop(
             "modern_tamil": res["modern_tamil"]
         })
         save_memory()
+
+    # Save user box to user_boxes.json for this image filename
+    fname = filename or getattr(file, "filename", None)
+    if fname:
+        global user_boxes_db
+        if fname not in user_boxes_db:
+            user_boxes_db[fname] = []
+        user_boxes_db[fname].append({
+            "x": int(x), "y": int(y), "w": int(w), "h": int(h),
+            "modern_tamil": res["modern_tamil"]
+        })
+        save_user_boxes()
 
     return {
         "modern_tamil": res["modern_tamil"],
