@@ -12,7 +12,9 @@ export default function InscriptionCanvas({
   hoveredWordId,
   onWordHover,
   onWordClick,
-  onBoxesEdited,     // NEW: callback when boxes are resized
+  onBoxesEdited,     // callback when boxes are resized
+  onAddBoxComplete, // callback when a new box is drawn
+  isAddingBox = false,
   threshold = 0,
   corrections = {},
 }) {
@@ -23,6 +25,7 @@ export default function InscriptionCanvas({
   // Local state for instant dragging updates
   const [localWords, setLocalWords] = useState(words)
   const [dragState, setDragState] = useState(null)
+  const [drawNewState, setDrawNewState] = useState(null)
   const hasDraggedRef = useRef(false)
 
   // Sync prop to state when backend returns new words
@@ -122,7 +125,26 @@ export default function InscriptionCanvas({
         ctx.fillText('✓', x + bw + 2, badgeY + 12)
       }
     }
-  }, [localWords, imageWidth, imageHeight, hoveredWordId, threshold, corrections])
+
+    // Render preview box when user is manually drawing a new box
+    if (drawNewState) {
+      const nx = Math.min(drawNewState.startX, drawNewState.currX)
+      const ny = Math.min(drawNewState.startY, drawNewState.currY)
+      const nw = Math.abs(drawNewState.currX - drawNewState.startX)
+      const nh = Math.abs(drawNewState.currY - drawNewState.startY)
+
+      ctx.globalAlpha = 0.25
+      ctx.fillStyle   = '#f97316'
+      ctx.fillRect(nx, ny, nw, nh)
+
+      ctx.globalAlpha = 1
+      ctx.strokeStyle = '#f97316'
+      ctx.lineWidth   = 2
+      ctx.setLineDash([4, 4])
+      ctx.strokeRect(nx, ny, nw, nh)
+      ctx.setLineDash([])
+    }
+  }, [localWords, imageWidth, imageHeight, hoveredWordId, threshold, corrections, drawNewState])
 
   useEffect(() => { draw() }, [draw])
 
@@ -171,11 +193,17 @@ export default function InscriptionCanvas({
 
   function handlePointerDown(e) {
     const canvas = canvasRef.current
-    if (!canvas || !localWords.length || !imageWidth) return
+    if (!canvas || !imageWidth) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     
+    if (isAddingBox) {
+      setDrawNewState({ startX: mx, startY: my, currX: mx, currY: my })
+      e.preventDefault()
+      return
+    }
+
     const edge = _hitEdge(mx, my, canvas.width, canvas.height)
     if (edge && hoveredWordId) {
       const word = localWords.find(w => w.id === hoveredWordId)
@@ -195,11 +223,16 @@ export default function InscriptionCanvas({
 
   function handlePointerMove(e) {
     const canvas = canvasRef.current
-    if (!canvas || !localWords.length || !imageWidth) return
+    if (!canvas || !imageWidth) return
     const rect = canvas.getBoundingClientRect()
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     
+    if (drawNewState) {
+      setDrawNewState(prev => ({ ...prev, currX: mx, currY: my }))
+      return
+    }
+
     if (dragState) {
       hasDraggedRef.current = true // user actually dragged
       const sx = imageWidth / canvas.width
@@ -227,6 +260,10 @@ export default function InscriptionCanvas({
         return { ...w, x, y, w: width, h: height }
       }))
     } else {
+      if (isAddingBox) {
+        canvas.style.cursor = 'crosshair'
+        return
+      }
       const edge = _hitEdge(mx, my, canvas.width, canvas.height)
       if (edge === 'left' || edge === 'right') canvas.style.cursor = 'ew-resize'
       else if (edge === 'top' || edge === 'bottom') canvas.style.cursor = 'ns-resize'
@@ -239,6 +276,29 @@ export default function InscriptionCanvas({
   }
 
   function handlePointerUp() {
+    if (drawNewState) {
+      const canvas = canvasRef.current
+      if (canvas) {
+        const nx = Math.min(drawNewState.startX, drawNewState.currX)
+        const ny = Math.min(drawNewState.startY, drawNewState.currY)
+        const nw = Math.abs(drawNewState.currX - drawNewState.startX)
+        const nh = Math.abs(drawNewState.currY - drawNewState.startY)
+
+        if (nw > 10 && nh > 10 && onAddBoxComplete) {
+          const sx = imageWidth / canvas.width
+          const sy = imageHeight / canvas.height
+          onAddBoxComplete({
+            x: nx * sx,
+            y: ny * sy,
+            w: nw * sx,
+            h: nh * sy
+          })
+        }
+      }
+      setDrawNewState(null)
+      return
+    }
+
     if (dragState) {
       if (hasDraggedRef.current && onBoxesEdited) {
         // Send the updated boxes to backend

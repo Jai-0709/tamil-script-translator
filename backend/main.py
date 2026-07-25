@@ -442,6 +442,42 @@ def remember_correction(req: RememberRequest):
     return {"status": "not_found"}
 
 
+@app.post("/api/classify-crop")
+async def classify_crop(
+    file: UploadFile = File(...),
+    x: int = Form(...),
+    y: int = Form(...),
+    w: int = Form(...),
+    h: int = Form(...)
+):
+    """
+    Classifies a manually drawn bounding box crop.
+    """
+    raw = await file.read()
+    image = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(status_code=400, detail="Invalid image file")
+
+    ih, iw = image.shape[:2]
+    x1 = max(0, x)
+    y1 = max(0, y)
+    x2 = min(iw, x + w)
+    y2 = min(ih, y + h)
+
+    if x2 <= x1 or y2 <= y1:
+        crop = image
+    else:
+        crop = image[y1:y2, x1:x2]
+
+    results = classifier.classify_batch([crop])
+    res = results[0]
+    return {
+        "modern_tamil": res["modern_tamil"],
+        "confidence": float(res["confidence"]),
+        "top3": res.get("top3", [])
+    }
+
+
 class ForgetRequest(BaseModel):
     word_id: int
 

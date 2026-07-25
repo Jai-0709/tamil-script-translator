@@ -192,6 +192,63 @@ export default function App() {
     }
   }, [apiResponse])
 
+  // Feature 4 — Manually draw & add a new box for unsegmented characters
+  const [isAddingBox, setIsAddingBox] = useState(false)
+
+  const handleManualBoxAdded = useCallback(async (newBox) => {
+    setIsAddingBox(false)
+    if (!apiResponse || !imageFile) return
+    showToast("Classifying custom character box...")
+    
+    try {
+      let fileToSend = imageFile
+      if (displayImageURL && displayImageURL !== imageURL) {
+        const res = await fetch(displayImageURL)
+        const blob = await res.blob()
+        fileToSend = new File([blob], "region_crop.jpg", { type: "image/jpeg" })
+      }
+
+      const form = new FormData()
+      form.append('file', fileToSend)
+      form.append('x', Math.round(newBox.x))
+      form.append('y', Math.round(newBox.y))
+      form.append('w', Math.round(newBox.w))
+      form.append('h', Math.round(newBox.h))
+
+      const res = await fetch(`${BACKEND_URL}/api/classify-crop`, {
+        method: 'POST',
+        body: form
+      })
+      
+      const data = await res.json()
+      if (res.ok) {
+        const nextId = (apiResponse.words.reduce((max, w) => Math.max(max, w.id), 0) || 0) + 1
+        const newWord = {
+          id: nextId,
+          x: Math.round(newBox.x),
+          y: Math.round(newBox.y),
+          w: Math.round(newBox.w),
+          h: Math.round(newBox.h),
+          modern_tamil: data.modern_tamil || '?',
+          confidence: data.confidence || 0.85,
+          line: 1,
+          is_unknown: false
+        }
+        
+        const updatedWords = [...apiResponse.words, newWord].sort((a, b) => a.x - b.x)
+        setApiResponse(prev => ({
+          ...prev,
+          words: updatedWords,
+          word_count: updatedWords.length
+        }))
+        showToast(`Added Box #${newWord.id} (${newWord.modern_tamil})`)
+      }
+    } catch (err) {
+      console.error("Failed to classify custom crop:", err)
+      showToast("Error adding manual box", false)
+    }
+  }, [apiResponse, imageFile, displayImageURL, imageURL])
+
   // Download corrections as JSON
   function downloadCorrections() {
     if (!apiResponse) return
@@ -637,6 +694,8 @@ export default function App() {
                     onWordHover={setHoveredWordId}
                     threshold={threshold}
                     corrections={corrections}
+                    isAddingBox={isAddingBox}
+                    onAddBoxComplete={handleManualBoxAdded}
                     onWordClick={(wordId, screenX, screenY) => {
                       const word = words.find(w => w.id === wordId)
                       if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })
@@ -692,6 +751,8 @@ export default function App() {
               threshold={threshold}
               corrections={corrections}
               onRemoveBox={handleRemoveBox}
+              isAddingBox={isAddingBox}
+              onAddBoxClick={() => setIsAddingBox(prev => !prev)}
               onWordClick={(wordId, screenX, screenY) => {
                 const word = words.find(w => w.id === wordId)
                 if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })

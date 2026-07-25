@@ -10,6 +10,8 @@ export default function TranslationPanel({
   corrections = {},
   onWordClick,
   onRemoveBox,
+  onAddBoxClick,
+  isAddingBox = false,
 }) {
   const listRef  = useRef(null)
   const itemRefs = useRef({})
@@ -45,6 +47,19 @@ export default function TranslationPanel({
           Character Breakdown
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={onAddBoxClick}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 10, padding: '3px 9px', borderRadius: 6,
+              background: isAddingBox ? 'var(--accent)' : 'rgba(249, 115, 22, 0.15)',
+              color: isAddingBox ? '#000' : 'var(--accent)',
+              border: '1px solid rgba(249, 115, 22, 0.4)', fontWeight: 700,
+              cursor: 'pointer', transition: 'all 0.15s ease'
+            }}
+          >
+            {isAddingBox ? '✏️ Drag on Image...' : '➕ Add Box'}
+          </button>
           {belowThreshold > 0 && (
             <span style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 10,
