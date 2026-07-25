@@ -541,9 +541,10 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
             for c in cnts:
                 cx, cy, cw, ch = cv2.boundingRect(c)
                 c_area = cw * ch
-                if cw >= 6 and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
+                # Require minimum width (30% of char_w_est) and aspect ratio >= 0.28 to reject stone cracks
+                if cw >= max(8, int(char_w_est * 0.30)) and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
                     asp = cw / ch
-                    if 0.18 <= asp <= 3.8:
+                    if 0.28 <= asp <= 3.8:
                         max_cnt_area = c_area
                         best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
                         
@@ -752,8 +753,15 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         print(f"[SEG] Rejecting partial left/right edge sliver: x={r['x']}, w={r['w']} (median_w={char_w_est})")
                         continue
 
+                    # Stone Crack / Fissure Suppressor:
+                    # Reject skinny vertical cracks (w < 32% of median character width AND aspect ratio < 0.32)
+                    asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
+                    if asp < 0.32 and r["w"] < (char_w_est * 0.35):
+                        print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
+                        continue
+
                     # Absolute noise check
-                    if r["h"] < 12 or r["w"] < 6:
+                    if r["h"] < 12 or r["w"] < 8:
                         print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']}")
                         continue
                         
