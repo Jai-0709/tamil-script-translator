@@ -274,11 +274,12 @@ async def translate(
                             best_sim = sim
                             best_mem_char = c_val
             
-            # If the structure matches past corrections, provide memorized options as suggestions
+            # If the structure matches past corrections, apply the best memorized character
             if best_mem_char:
                 results[i]["memorized_options"] = matching_chars
                 results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
-                results[i]["is_memorized"] = False
+                results[i]["modern_tamil"] = best_mem_char # Default to best memorized match
+                results[i]["is_memorized"] = True
             else:
                 results[i]["is_memorized"] = False
     except Exception:
