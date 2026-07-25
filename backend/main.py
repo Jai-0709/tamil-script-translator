@@ -277,6 +277,10 @@ async def translate(
                 sy = max(0, int(sb["y"]))
                 sw = int(sb["w"])
                 sh = int(sb["h"])
+                raw_c = str(sb.get("modern_tamil", ""))
+                clean_c = raw_c.split(',')[0].strip() if ',' in raw_c else raw_c
+                sb["modern_tamil"] = clean_c
+                
                 crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
                 if crop.size > 0:
                     regions.append({
