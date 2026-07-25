@@ -9,6 +9,7 @@ export default function TranslationPanel({
   threshold = 0,
   corrections = {},
   onWordClick,
+  onRemoveBox,
 }) {
   const listRef  = useRef(null)
   const itemRefs = useRef({})
@@ -179,23 +180,47 @@ export default function TranslationPanel({
                       )}
                     </span>
 
-                    {/* Confidence */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                      {word.is_memorized ? (
-                        <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✓</span>
-                      ) : isCorrected ? (
-                        <span style={{ fontSize: 9, color: '#22c55e', fontWeight: 600 }}>user override</span>
-                      ) : (
-                        <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>cls {word.class_id}</span>
-                      )}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <div style={{ width: 44, height: 4, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: confColor, borderRadius: 3, transition: 'width 0.3s' }} />
+                    {/* Confidence & Delete Action */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                        {word.is_memorized ? (
+                          <span style={{ fontSize: 11, color: '#22c55e', fontWeight: 700 }}>✓</span>
+                        ) : isCorrected ? (
+                          <span style={{ fontSize: 9, color: '#22c55e', fontWeight: 600 }}>user override</span>
+                        ) : (
+                          <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>cls {word.class_id}</span>
+                        )}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <div style={{ width: 44, height: 4, borderRadius: 3, background: 'rgba(255,255,255,0.06)', overflow: 'hidden' }}>
+                            <div style={{ width: `${pct}%`, height: '100%', background: confColor, borderRadius: 3, transition: 'width 0.3s' }} />
+                          </div>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: confColor, minWidth: 32, textAlign: 'right' }}>
+                            {pct}%
+                          </span>
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: confColor, minWidth: 32, textAlign: 'right' }}>
-                          {pct}%
-                        </span>
                       </div>
+
+                      {onRemoveBox && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onRemoveBox(word.id)
+                          }}
+                          style={{
+                            background: 'rgba(239, 68, 68, 0.08)',
+                            border: '1px solid rgba(239, 68, 68, 0.2)',
+                            color: '#ef4444', borderRadius: 6, width: 26, height: 26,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 12, cursor: 'pointer', opacity: 0.7,
+                            transition: 'all 0.15s ease',
+                          }}
+                          onMouseOver={(e) => { e.currentTarget.style.opacity = 1; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.25)' }}
+                          onMouseOut={(e) => { e.currentTarget.style.opacity = 0.7; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)' }}
+                          title={`Delete Box #${word.id}`}
+                        >
+                          🗑
+                        </button>
+                      )}
                     </div>
                   </div>
                 )

@@ -165,6 +165,19 @@ export default function App() {
     }
   }, [apiResponse, mergeGap])
 
+  // Feature 3 — Remove/Delete a box manually
+  const handleRemoveBox = useCallback((wordId) => {
+    setPopover(null)
+    if (!apiResponse || !apiResponse.words) return
+    const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
+    setApiResponse(prev => ({
+      ...prev,
+      words: updatedWords,
+      word_count: updatedWords.length,
+    }))
+    showToast(`Removed Box #${wordId}`)
+  }, [apiResponse])
+
   // Download corrections as JSON
   function downloadCorrections() {
     if (!apiResponse) return
@@ -262,6 +275,7 @@ export default function App() {
           position={{ x: popover.x, y: popover.y }}
           onCorrect={handleCorrect}
           onForgetMemory={handleForgetMemory}
+          onRemoveBox={handleRemoveBox}
           onClose={() => setPopover(null)}
           onSplitBox={(wordId) => {
             setPopover(null)
@@ -663,6 +677,7 @@ export default function App() {
               onWordHover={setHoveredWordId}
               threshold={threshold}
               corrections={corrections}
+              onRemoveBox={handleRemoveBox}
               onWordClick={(wordId, screenX, screenY) => {
                 const word = words.find(w => w.id === wordId)
                 if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })

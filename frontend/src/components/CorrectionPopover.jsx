@@ -5,7 +5,7 @@
  * Shows top-3 model predictions and a manual text input.
  * Calls onCorrect(wordId, newChar) when user confirms.
  */
-export default function CorrectionPopover({ word, position, onCorrect, onClose, onSplitBox, onForgetMemory }) {
+export default function CorrectionPopover({ word, position, onCorrect, onClose, onSplitBox, onForgetMemory, onRemoveBox }) {
   if (!word) return null
 
   const top3 = word.top3 || []
@@ -63,25 +63,41 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
           maxHeight: 'calc(100vh - 120px)',
           overflowY: 'auto', padding: '12px 14px',
         }}>
-          {/* Manual Split */}
-          {onSplitBox && (
-            <div style={{ marginBottom: 16 }}>
+          {/* Action Tools: Split / Remove */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {onSplitBox && (
               <button
                 onClick={() => onSplitBox(word.id)}
                 style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--accent)',
+                  flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--accent)',
                   background: 'rgba(249,115,22,0.1)', color: 'var(--accent)',
-                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
                   transition: 'background 0.15s'
                 }}
                 onMouseOver={e => e.currentTarget.style.background = 'rgba(249,115,22,0.2)'}
                 onMouseOut={e => e.currentTarget.style.background = 'rgba(249,115,22,0.1)'}
               >
-                ✂️ Split Box Vertically
+                ✂️ Split Box
               </button>
-            </div>
-          )}
+            )}
+            {onRemoveBox && (
+              <button
+                onClick={() => { onRemoveBox(word.id); onClose(); }}
+                style={{
+                  flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.4)',
+                  background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  transition: 'background 0.15s'
+                }}
+                onMouseOver={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
+                onMouseOut={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
+              >
+                🗑 Remove Box
+              </button>
+            )}
+          </div>
 
           {/* Current prediction */}
           <div style={{ marginBottom: 10 }}>
