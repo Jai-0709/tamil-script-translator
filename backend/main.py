@@ -671,8 +671,29 @@ async def save_final_segmentation(req: SaveSegmentationRequest):
 
     user_boxes_db[fname] = clean_boxes
     save_user_boxes()
-    print(f"[SAVE] Saved {len(clean_boxes)} custom boxes for {fname}")
-    return {"status": "ok", "saved_count": len(clean_boxes), "filename": fname}
+
+    # Automatically extract and save feature vectors into global vector memory for cross-image learning
+    global correction_memory
+    saved_vec_count = 0
+    for b in req.boxes:
+        c_val = str(b.get("modern_tamil", "")).strip()
+        if c_val and c_val != "?":
+            box_id = b.get("id")
+            if box_id and box_id in _last_features:
+                vec = _last_features[box_id]
+                correction_memory = [
+                    mem for mem in correction_memory
+                    if cosine_similarity(vec, mem["vector"]) <= 0.88
+                ]
+                correction_memory.append({
+                    "vector": vec,
+                    "modern_tamil": c_val
+                })
+                saved_vec_count += 1
+    save_memory()
+
+    print(f"[SAVE] Saved {len(clean_boxes)} custom boxes for {fname} + {saved_vec_count} universal character vectors")
+    return {"status": "ok", "saved_count": len(clean_boxes), "filename": fname, "saved_vectors": saved_vec_count}
 
 
 class ForgetRequest(BaseModel):
