@@ -563,9 +563,9 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
             avg_h = max(r1["y"] + r1["h"], r2["y"] + r2["h"]) - avg_y
             gaps_to_check.append((r1_right, r2_left, avg_y, avg_h))
             
-    # 3. Right margin gap
+    # 3. Right margin gap (check if character like ர் or ல் is on right margin)
     last_right = sorted_regs[-1]["x"] + sorted_regs[-1]["w"]
-    if (img_w - last_right) > max(12, int(char_w_est * 0.35)):
+    if (img_w - last_right) > max(8, int(char_w_est * 0.20)):
         gaps_to_check.append((last_right, img_w, sorted_regs[-1]["y"], sorted_regs[-1]["h"]))
 
     # Scan each gap interval for unsegmented character contours
