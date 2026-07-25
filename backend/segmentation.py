@@ -483,6 +483,64 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
     )
 
 
+def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est: int, char_h_est: int) -> List[Dict]:
+    """
+    Scans the horizontal gaps between consecutive detected boxes.
+    If a gap is wider than 60% of median character width, performs multi-strategy
+    contour extraction in that gap to recover any missing / unsegmented character!
+    """
+    if len(regions) < 2:
+        return regions
+
+    sorted_regs = sorted(regions, key=lambda r: r["x"])
+    recovered = []
+    
+    for i in range(len(sorted_regs) - 1):
+        r1 = sorted_regs[i]
+        r2 = sorted_regs[i + 1]
+        
+        r1_right = r1["x"] + r1["w"]
+        r2_left = r2["x"]
+        gap_w = r2_left - r1_right
+        
+        # If the gap between two boxes is large enough to hold an unsegmented character
+        if gap_w > int(char_w_est * 0.60):
+            gx1 = max(0, r1_right - 2)
+            gx2 = min(gray.shape[1], r2_left + 2)
+            gy1 = max(0, min(r1["y"], r2["y"]) - 4)
+            gy2 = min(gray.shape[0], max(r1["y"] + r1["h"], r2["y"] + r2["h"]) + 4)
+            
+            if (gx2 - gx1) > 6 and (gy2 - gy1) > 6:
+                gap_crop = gray[gy1:gy2, gx1:gx2]
+                blurred = cv2.GaussianBlur(gap_crop, (3, 3), 0)
+                thresh = cv2.adaptiveThreshold(
+                    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+                )
+                
+                cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                best_cnt_box = None
+                max_cnt_area = 0
+                
+                for c in cnts:
+                    cx, cy, cw, ch = cv2.boundingRect(c)
+                    c_area = cw * ch
+                    if cw >= 6 and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
+                        asp = cw / ch
+                        if 0.18 <= asp <= 3.8:
+                            max_cnt_area = c_area
+                            best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
+                            
+                if best_cnt_box:
+                    bx, by, bw, bh = best_cnt_box
+                    print(f"[SEG] Recovered missing gap character: x={bx}, y={by}, w={bw}, h={bh}")
+                    recovered.append({"x": bx, "y": by, "w": bw, "h": bh, "line": 0})
+                    
+    if recovered:
+        print(f"[SEG] Inter-Box Gap Recovery engine successfully restored {len(recovered)} missed characters.")
+        
+    return regions + recovered
+
+
 # ---------------------------------------------
 #  Public API
 # ---------------------------------------------
@@ -556,8 +614,8 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     continue
                     
                 tile = image_bgr[y1:y2, x1:x2]
-                # Maximum sensitivity: conf=0.10, augment=True (TTA), iou=0.5
-                results = _YOLO_MODEL(tile, conf=0.10, iou=0.50, augment=True, verbose=False)
+                # Maximum sensitivity: conf=0.04, augment=True (TTA), iou=0.55
+                results = _YOLO_MODEL(tile, conf=0.04, iou=0.55, augment=True, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
@@ -576,17 +634,12 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
 
         # Apply NMS to remove duplicates across overlapping slices
         if len(yolo_boxes) > 0:
-            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.1, nms_threshold=0.4)
+            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.04, nms_threshold=0.55)
             if len(indices) > 0:
                 indices = indices.flatten()
                 
                 # ── Apply Containment / High Overlap Filter ──
-                # cv2.dnn.NMSBoxes uses IoU. If a tiny box is inside a huge box, IoU is small, so it keeps both.
-                # We need IoM (Intersection over Minimum Area) to suppress completely enveloped boxes.
                 boxes_with_scores = [(yolo_boxes[i], yolo_scores[i]) for i in indices]
-                # Sort descending by AREA so we evaluate the largest boxes first!
-                # This prevents a tiny sub-feature box (like a dot) from suppressing the main character box
-                # just because the tiny box had a slightly higher YOLO confidence score.
                 boxes_with_scores.sort(key=lambda x: x[0][2] * x[0][3], reverse=True)
                 
                 final_yolo_boxes = []
@@ -608,8 +661,8 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         
                         if ix1 < ix2 and iy1 < iy2:
                             inter_area = (ix2 - ix1) * (iy2 - iy1)
-                            # If intersection is >80% of the smaller box, they are essentially the same region
-                            if inter_area > 0.8 * min(area_a, area_b):
+                            # If intersection is >88% of the smaller box, they are essentially the same region
+                            if inter_area > 0.88 * min(area_a, area_b):
                                 is_contained = True
                                 break
                                 
@@ -710,6 +763,10 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     max_h=int(char_h_est * multiplier)
                 )
                 print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
+
+            # ── Automatic Gap Character Recovery ──
+            # Scans horizontal gaps between detected boxes to recover any unsegmented character
+            regions = _recover_unsegmented_gaps(regions, gray, char_w_est, char_h_est)
 
 
 
