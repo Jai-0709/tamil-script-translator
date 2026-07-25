@@ -471,6 +471,17 @@ async def classify_crop(
 
     results = classifier.classify_batch([crop])
     res = results[0]
+
+    # Automatically save newly drawn box shape & feature vector into memory!
+    features = res.get("features", [])
+    if features:
+        global correction_memory
+        correction_memory.append({
+            "vector": features,
+            "modern_tamil": res["modern_tamil"]
+        })
+        save_memory()
+
     return {
         "modern_tamil": res["modern_tamil"],
         "confidence": float(res["confidence"]),
