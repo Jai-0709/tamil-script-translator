@@ -786,26 +786,26 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
 
                 for r in regions:
                     # A box is a partial cut-off stroke if it starts near the top or ends near the bottom AND is abnormally short
-                    is_top = r["y"] <= top_edge_thresh
-                    is_bottom = (r["y"] + r["h"]) >= bottom_edge_thresh
+                    is_top = r["y"] <= (top_edge_thresh // 2)
+                    is_bottom = (r["y"] + r["h"]) >= (work_h - (top_edge_thresh // 2))
                     
-                    if (is_top or is_bottom) and r["h"] < (char_h_est * 0.68):
+                    if (is_top or is_bottom) and r["h"] < (char_h_est * 0.30):
                         print(f"[SEG] Rejecting partial top/bottom edge character: y={r['y']}, h={r['h']} (median_h={char_h_est})")
                         continue
 
                     # Touches the extreme left or right boundary of the image frame
-                    is_left = r["x"] <= 3
-                    is_right = (r["x"] + r["w"]) >= (work_w - 3)
+                    is_left = r["x"] <= 2
+                    is_right = (r["x"] + r["w"]) >= (work_w - 2)
                     
-                    # Only reject if it is an impossibly thin partial sliver (< 20% of median width)
-                    if (is_left or is_right) and r["w"] < (char_w_est * 0.20):
+                    # Only reject if it is an impossibly thin partial sliver (< 10% of median width)
+                    if (is_left or is_right) and r["w"] < (char_w_est * 0.10):
                         print(f"[SEG] Rejecting partial left/right edge sliver: x={r['x']}, w={r['w']} (median_w={char_w_est})")
                         continue
 
                     # Stone Crack / Fissure Suppressor:
-                    # Reject vertical cracks (w < 55% of median character width AND aspect ratio < 0.42)
+                    # Only reject extremely thin vertical cracks (w < 20% of median character width AND aspect ratio < 0.15)
                     asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
-                    if asp < 0.42 and r["w"] < (char_w_est * 0.55):
+                    if asp < 0.15 and r["w"] < (char_w_est * 0.20):
                         print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
                         continue
 
