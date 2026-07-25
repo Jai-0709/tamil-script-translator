@@ -587,8 +587,10 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
                 if cw >= max(8, int(char_w_est * 0.30)) and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
                     asp = cw / ch
                     if 0.28 <= asp <= 3.8:
-                        max_cnt_area = c_area
-                        best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
+                        candidate_crop = gap_crop[cy:cy+ch, cx:cx+cw]
+                        if not _is_stone_crack_or_blank(candidate_crop):
+                            max_cnt_area = c_area
+                            best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
                         
             if best_cnt_box:
                 bx, by, bw, bh = best_cnt_box
@@ -942,6 +944,18 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     thresh = 0.85 if mode == "smart" else 0.45
     regions = _remove_overlaps(regions, overlap_thresh=thresh)
     print(f"[SEG] After overlap removal: {len(regions)}")
+
+    # ── STEP 9.5: Final Physical Stroke & Crack Elimination Pass ─────────────
+    # Run _is_stone_crack_or_blank on all regions to guarantee no crack/blank box escapes
+    final_regions = []
+    for r in regions:
+        crop_gray = gray[r["y"]:r["y"]+r["h"], r["x"]:r["x"]+r["w"]]
+        if not _is_stone_crack_or_blank(crop_gray):
+            final_regions.append(r)
+        else:
+            print(f"[SEG] Final Pass: Successfully eliminated stone crack/blank box at x={r['x']}, y={r['y']}")
+    if final_regions:
+        regions = final_regions
 
     if not regions:
         print("[SEG] WARNING: No regions detected. Returning empty list.")
