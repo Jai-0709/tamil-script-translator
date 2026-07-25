@@ -274,13 +274,11 @@ async def translate(
                             best_sim = sim
                             best_mem_char = c_val
             
-            # If the structure matches past corrections, use the highest similarity match
+            # If the structure matches past corrections, provide memorized options as suggestions
             if best_mem_char:
                 results[i]["memorized_options"] = matching_chars
                 results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
-                results[i]["modern_tamil"] = best_mem_char # Strictly default to best memorized match
-                results[i]["confidence"] = 1.0
-                results[i]["is_memorized"] = True
+                results[i]["is_memorized"] = False
             else:
                 results[i]["is_memorized"] = False
     except Exception:
@@ -298,29 +296,39 @@ async def translate(
             lines[l] = []
         lines[l].append(i)
 
+    # Dotted <-> Base Consonant Mappings for Contextual Phonetic Expansion
+    PULLI_MAP = {'க': 'க்', 'ங': 'ங்', 'ச': 'ச்', 'ஞ': 'ஞ்', 'ட': 'ட்', 'ண': 'ண்', 'த': 'த்', 'ந': 'ந்', 'ப': 'ப்', 'ம': 'ம்', 'ய': 'ய்', 'ர': 'ர்', 'ல': 'ல்', 'வ': 'வ்', 'ழ': 'ழ்', 'ள': 'ள்', 'ற': 'ற்', 'ன': 'ன்'}
+    UNPULLI_MAP = {v: k for k, v in PULLI_MAP.items()}
+
     # Run Beam Search for each line
     all_alt_paths = []
     for l, indices in lines.items():
         sequence_options = []
         for i in indices:
             if results[i].get("is_memorized"):
-                # Get the AI's original guess so it is still available in the UI popover
-                cid = results[i]["ai_original_tamil"]
+                cid = results[i].get("ai_original_tamil", results[i]["modern_tamil"])
                 ai_chars = [c.strip() for c in cid.replace(' ', '').split(',')]
-                mem_chars = results[i]["memorized_options"]
-                
-                # UI gets both, so the user can fallback if memory is wrong
+                mem_chars = results[i].get("memorized_options", [results[i]["modern_tamil"]])
                 ui_chars = mem_chars + [c for c in ai_chars if c not in mem_chars]
-                # NLP must ONLY choose from the user's historically memorized options!
-                nlp_chars = mem_chars
+                nlp_chars = list(mem_chars)
             else:
                 cid = results[i]["modern_tamil"]
                 chars = [c.strip() for c in cid.replace(' ', '').split(',')]
                 ui_chars = chars
-                nlp_chars = chars
+                nlp_chars = list(chars)
             
-            sequence_options.append(nlp_chars)
-            results[i]["ambiguous_options"] = ui_chars
+            # Automatically expand nlp_chars to include base <-> pulli counterparts
+            # so Beam Search can evaluate word context (e.g. tiruppattam -> #3 is ப், #4 is ப)!
+            expanded = []
+            for c in nlp_chars:
+                if c not in expanded: expanded.append(c)
+                if c in UNPULLI_MAP and UNPULLI_MAP[c] not in expanded:
+                    expanded.append(UNPULLI_MAP[c])
+                if c in PULLI_MAP and PULLI_MAP[c] not in expanded:
+                    expanded.append(PULLI_MAP[c])
+                    
+            sequence_options.append(expanded)
+            results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + expanded))
             
         # We ask for the top 8 most mathematically probable full-sentence interpretations.
         top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=8)
@@ -328,9 +336,8 @@ async def translate(
         best_path = top_k_paths[0] if top_k_paths else []
         for seq_idx, i in enumerate(indices):
             if best_path and seq_idx < len(best_path):
-                # DO NOT overwrite explicitly memorized user corrections with Beam Search!
-                if not results[i].get("is_memorized"):
-                    results[i]["modern_tamil"] = best_path[seq_idx]
+                # Update with the best mathematical Beam Search contextual character
+                results[i]["modern_tamil"] = best_path[seq_idx]
                 
         # Store alternative paths for later
         for alt_path in top_k_paths[1:]:
