@@ -540,9 +540,9 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
     img_h, img_w = gray.shape[:2]
     gaps_to_check = []
     
-    # 1. Left margin gap
+    # 1. Left margin gap (check if character like ம is in left margin)
     first_x = sorted_regs[0]["x"]
-    if first_x > int(char_w_est * 0.50):
+    if first_x > max(12, int(char_w_est * 0.25)):
         gaps_to_check.append((0, first_x, sorted_regs[0]["y"], sorted_regs[0]["h"]))
         
     # 2. Inter-box gaps
@@ -552,14 +552,14 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
         r1_right = r1["x"] + r1["w"]
         r2_left = r2["x"]
         gap_w = r2_left - r1_right
-        if gap_w > int(char_w_est * 0.50):
+        if gap_w > max(12, int(char_w_est * 0.35)):
             avg_y = min(r1["y"], r2["y"])
             avg_h = max(r1["y"] + r1["h"], r2["y"] + r2["h"]) - avg_y
             gaps_to_check.append((r1_right, r2_left, avg_y, avg_h))
             
     # 3. Right margin gap
     last_right = sorted_regs[-1]["x"] + sorted_regs[-1]["w"]
-    if (img_w - last_right) > int(char_w_est * 0.50):
+    if (img_w - last_right) > max(12, int(char_w_est * 0.35)):
         gaps_to_check.append((last_right, img_w, sorted_regs[-1]["y"], sorted_regs[-1]["h"]))
 
     # Scan each gap interval for unsegmented character contours
@@ -583,10 +583,10 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
             for c in cnts:
                 cx, cy, cw, ch = cv2.boundingRect(c)
                 c_area = cw * ch
-                # Require minimum width (30% of char_w_est) and aspect ratio >= 0.28 to reject stone cracks
-                if cw >= max(8, int(char_w_est * 0.30)) and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
+                # Require minimum width (25% of char_w_est) to recover margin characters
+                if cw >= max(8, int(char_w_est * 0.25)) and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
                     asp = cw / ch
-                    if 0.28 <= asp <= 3.8:
+                    if 0.25 <= asp <= 3.8:
                         candidate_crop = gap_crop[cy:cy+ch, cx:cx+cw]
                         if not _is_stone_crack_or_blank(candidate_crop):
                             max_cnt_area = c_area
