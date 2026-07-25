@@ -252,6 +252,40 @@ export default function App() {
     }
   }, [apiResponse, imageFile, displayImageURL, imageURL])
 
+  // Save final segmentation layout and memory to disk
+  const handleSaveFinalSegmentation = useCallback(async () => {
+    if (!apiResponse || !apiResponse.words || !imageFile) {
+      showToast("No active segmentation to save", false)
+      return
+    }
+    showToast("Saving final segmentation memory...")
+    try {
+      const finalBoxes = apiResponse.words.map(w => ({
+        x: w.x, y: w.y, w: w.w, h: w.h,
+        modern_tamil: corrections[w.id] ?? w.modern_tamil
+      }))
+
+      const res = await fetch(`${BACKEND_URL}/api/save-final-segmentation`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename: imageFile.name,
+          boxes: finalBoxes
+        })
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        showToast(`Saved final segmentation (${data.saved_count} boxes) to memory!`)
+      } else {
+        showToast("Failed to save final segmentation", false)
+      }
+    } catch (err) {
+      console.error("Error saving final segmentation:", err)
+      showToast("Connection error — is backend running?", false)
+    }
+  }, [apiResponse, imageFile, corrections])
+
   // Download corrections as JSON
   function downloadCorrections() {
     if (!apiResponse) return
@@ -756,6 +790,7 @@ export default function App() {
               onRemoveBox={handleRemoveBox}
               isAddingBox={isAddingBox}
               onAddBoxClick={() => setIsAddingBox(prev => !prev)}
+              onSaveSegmentation={handleSaveFinalSegmentation}
               onWordClick={(wordId, screenX, screenY) => {
                 const word = words.find(w => w.id === wordId)
                 if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })

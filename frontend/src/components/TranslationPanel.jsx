@@ -11,6 +11,7 @@ export default function TranslationPanel({
   onWordClick,
   onRemoveBox,
   onAddBoxClick,
+  onSaveSegmentation,
   isAddingBox = false,
 }) {
   const listRef  = useRef(null)
@@ -59,6 +60,20 @@ export default function TranslationPanel({
             }}
           >
             {isAddingBox ? '✏️ Drag on Image...' : '➕ Add Box'}
+          </button>
+          <button
+            onClick={onSaveSegmentation}
+            title="Save all final segmentation changes to permanent memory"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 4,
+              fontSize: 10, padding: '3px 9px', borderRadius: 6,
+              background: 'rgba(34, 197, 94, 0.18)',
+              color: '#22c55e',
+              border: '1px solid rgba(34, 197, 94, 0.4)', fontWeight: 700,
+              cursor: 'pointer', transition: 'all 0.15s ease'
+            }}
+          >
+            💾 Save Memory
           </button>
           {belowThreshold > 0 && (
             <span style={{

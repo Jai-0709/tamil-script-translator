@@ -266,38 +266,26 @@ async def translate(
         else:
             regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
 
-        # Merge persistent user-added custom boxes for this image if available
+        # Load persistent user-saved custom segmentation layout for this image if available
         fname = getattr(file, "filename", None)
         saved_boxes = get_user_boxes_for_file(fname)
         if saved_boxes:
-            print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom boxes for {fname}")
-            for sb in saved_boxes:
+            print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom segmentation layout for {fname}")
+            regions = []
+            for i, sb in enumerate(saved_boxes):
                 sx = max(0, int(sb["x"]))
                 sy = max(0, int(sb["y"]))
                 sw = int(sb["w"])
                 sh = int(sb["h"])
-                # Check IoU to avoid duplicate box insertions
-                overlap = False
-                for r in regions:
-                    rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                    inter_x1 = max(sx, rx)
-                    inter_y1 = max(sy, ry)
-                    inter_x2 = min(sx + sw, rx + rw)
-                    inter_y2 = min(sy + sh, ry + rh)
-                    if inter_x2 > inter_x1 and inter_y2 > inter_y1:
-                        inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
-                        if inter_area / float(sw * sh) > 0.60:
-                            overlap = True
-                            break
-                if not overlap:
-                    crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
-                    if crop.size > 0:
-                        regions.append({
-                            "id": len(regions) + 1,
-                            "x": sx, "y": sy, "w": sw, "h": sh,
-                            "line": 1,
-                            "crop": crop
-                        })
+                crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
+                if crop.size > 0:
+                    regions.append({
+                        "id": i + 1,
+                        "_id": i + 1,
+                        "x": sx, "y": sy, "w": sw, "h": sh,
+                        "line": 1,
+                        "crop": crop
+                    })
             regions.sort(key=lambda r: (r["line"], r["x"]))
             for i, r in enumerate(regions):
                 r["_id"] = i + 1
@@ -570,6 +558,33 @@ async def classify_crop(
         "confidence": float(res["confidence"]),
         "top3": res.get("top3", [])
     }
+
+
+class SaveSegmentationRequest(BaseModel):
+    filename: str
+    boxes: List[Dict]
+
+@app.post("/api/save-final-segmentation")
+async def save_final_segmentation(req: SaveSegmentationRequest):
+    """
+    Saves the final user-edited segmentation layout for an image filename to user_boxes.json.
+    """
+    global user_boxes_db
+    fname = os.path.basename(req.filename) if req.filename else "custom_image.jpg"
+    
+    clean_boxes = []
+    for b in req.boxes:
+        clean_boxes.append({
+            "x": int(b.get("x", 0)),
+            "y": int(b.get("y", 0)),
+            "w": int(b.get("w", 10)),
+            "h": int(b.get("h", 10)),
+            "modern_tamil": str(b.get("modern_tamil", ""))
+        })
+        
+    user_boxes_db[fname] = clean_boxes
+    save_user_boxes()
+    return {"status": "ok", "saved_count": len(clean_boxes), "filename": fname}
 
 
 class ForgetRequest(BaseModel):
