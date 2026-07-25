@@ -713,9 +713,8 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     continue
                     
                 # Reject extreme aspect ratios (cracks and scratches in the stone)
-                # We tighten the lower bound to 0.22 because anything skinnier is physically just a crack.
                 aspect_ratio = w_work / h_work
-                if aspect_ratio > 4.5 or aspect_ratio < 0.22:
+                if aspect_ratio > 4.5 or aspect_ratio < 0.35:
                     print(f"[SEG] Rejecting YOLO box with extreme aspect ratio (crack): w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
                     continue
                 
@@ -754,9 +753,9 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         continue
 
                     # Stone Crack / Fissure Suppressor:
-                    # Reject skinny vertical cracks (w < 32% of median character width AND aspect ratio < 0.32)
+                    # Reject vertical cracks (w < 55% of median character width AND aspect ratio < 0.42)
                     asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
-                    if asp < 0.32 and r["w"] < (char_w_est * 0.35):
+                    if asp < 0.42 and r["w"] < (char_w_est * 0.55):
                         print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
                         continue
 
