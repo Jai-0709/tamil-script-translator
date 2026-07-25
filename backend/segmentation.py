@@ -816,6 +816,12 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         print(f"[SEG] Rejecting crack/blank box at x={r['x']}, y={r['y']}")
                         continue
 
+                    # Reject top margin hallucination boxes near extreme top edge (y <= 5px or y <= 5% height)
+                    is_top_margin = r["y"] <= max(6, int(work_h * 0.05))
+                    if is_top_margin and r["h"] < (char_h_est * 0.70):
+                        print(f"[SEG] Rejecting top margin hallucination box: y={r['y']}, h={r['h']} (median_h={char_h_est})")
+                        continue
+
                     # Absolute noise check
                     if r["h"] < 12 or r["w"] < 8:
                         print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']}")
@@ -827,29 +833,29 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 char_w_est = max(15, work_w // 30)
                 char_h_est = max(15, work_h // 10)
             
-            # Use the dynamically provided merge_gap_x (from UI slider)
-            # Add a small vertical tolerance based on the horizontal gap to handle misaligned strokes
-            merge_gap_y = max(2, merge_gap_x // 4)
-            
-            # The higher the user sets the slider, the larger the merged box is allowed to be.
-            # At 20px gap, multiplier is 3.5x median width.
-            multiplier = 1.5 + (merge_gap_x / 10.0)
-
-            before_merge = len(regions)
-            if merge_gap_x > 0:
-                regions = _merge_nearby_boxes(
-                    regions, 
-                    merge_x=merge_gap_x, 
-                    merge_y=merge_gap_y, 
-                    max_w=int(char_w_est * multiplier),
-                    max_h=int(char_h_est * multiplier)
-                )
-                print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
-                print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
-
-            # ── Automatic Gap Character Recovery ──
-            # Scans horizontal gaps between detected boxes to recover any unsegmented character
-            regions = _recover_unsegmented_gaps(regions, gray, char_w_est, char_h_est)
+            # Automatic Projection Profile Compound Box Splitting:
+            # Splits wide boxes (w > 1.32 * char_w_est or w/h > 1.25) into 2 distinct character boxes
+            split_regions = []
+            for r in regions:
+                rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+                asp = rw / rh if rh > 0 else 1.0
+                if (rw > int(char_w_est * 1.32) or asp > 1.25) and rw > 20:
+                    crop = gray[ry:ry+rh, rx:rx+rw]
+                    if crop.size > 0:
+                        v_proj = np.sum(crop < 180, axis=0)
+                        mid_start = int(rw * 0.28)
+                        mid_end = int(rw * 0.72)
+                        if mid_end > mid_start:
+                            min_idx = mid_start + int(np.argmin(v_proj[mid_start:mid_end]))
+                            if min_idx > 8 and (rw - min_idx) > 8:
+                                b1 = {"x": rx, "y": ry, "w": min_idx, "h": rh, "line": r.get("line", 1)}
+                                b2 = {"x": rx + min_idx, "y": ry, "w": rw - min_idx, "h": rh, "line": r.get("line", 1)}
+                                split_regions.append(b1)
+                                split_regions.append(b2)
+                                print(f"[SEG] Auto-split wide compound box w={rw} into w1={min_idx}, w2={rw-min_idx}")
+                                continue
+                split_regions.append(r)
+            regions = split_regions
 
 
 
