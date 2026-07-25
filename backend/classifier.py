@@ -234,12 +234,14 @@ def classify_crop(crop: np.ndarray) -> Dict:
     top3 = []
     for idx, conf in zip(top3_idxs[0].tolist(), top3_confs[0].tolist()):
         folder_id = _idx_to_class.get(int(idx), str(int(idx)))
-        tamil_chars = _folder_to_chars.get(folder_id, folder_id) if _folder_to_chars else folder_id
+        raw_chars = _folder_to_chars.get(folder_id, folder_id) if _folder_to_chars else folder_id
+        primary_char = raw_chars.split(',')[0].strip() if isinstance(raw_chars, str) else str(raw_chars)
         
         top3.append({
-            "class":       folder_id,
-            "modern_tamil": tamil_chars,
-            "confidence":  round(float(conf), 4),
+            "class":        folder_id,
+            "modern_tamil": primary_char,
+            "raw_options":  raw_chars,
+            "confidence":   round(float(conf), 4),
         })
 
     # Top-1 is the first entry
@@ -289,11 +291,13 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
             top3 = []
             for idx, conf in zip(top3_idxs[j].tolist(), top3_confs[j].tolist()):
                 folder_id = _idx_to_class.get(int(idx), str(int(idx)))
-                tamil_chars = _folder_to_chars.get(folder_id, folder_id) if _folder_to_chars else folder_id
+                raw_chars = _folder_to_chars.get(folder_id, folder_id) if _folder_to_chars else folder_id
+                primary_char = raw_chars.split(',')[0].strip() if isinstance(raw_chars, str) else str(raw_chars)
                 
                 top3.append({
                     "class":        folder_id,
-                    "modern_tamil": tamil_chars,
+                    "modern_tamil": primary_char,
+                    "raw_options":  raw_chars,
                     "confidence":   round(float(conf), 4),
                 })
             best = top3[0]
