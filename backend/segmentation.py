@@ -495,6 +495,12 @@ def _is_stone_crack_or_blank(crop_gray: np.ndarray) -> bool:
     if ch < 8 or cw < 8:
         return True
 
+    # 0. Check intensity standard deviation (blank stone texture has flat uniform gray contrast)
+    std_dev = float(np.std(crop_gray))
+    if std_dev < 12.0:
+        print(f"[SEG] Rejecting blank stone crop with flat contrast: std_dev={std_dev:.2f}")
+        return True
+
     # 1. Binarize using CLAHE + Adaptive
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
     enhanced = clahe.apply(crop_gray)
@@ -508,8 +514,8 @@ def _is_stone_crack_or_blank(crop_gray: np.ndarray) -> bool:
     stroke_pixels = cv2.countNonZero(thresh)
     stroke_density = stroke_pixels / (cw * ch)
     
-    # If stroke density is extremely low (< 7.5% of crop area), it's empty stone / crack
-    if stroke_density < 0.075:
+    # If stroke density is low (< 9.0% of crop area), it's empty stone / crack
+    if stroke_density < 0.090:
         print(f"[SEG] Rejecting box with low stroke density (crack/blank stone): density={stroke_density:.3f}")
         return True
         
@@ -540,9 +546,9 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
     img_h, img_w = gray.shape[:2]
     gaps_to_check = []
     
-    # 1. Left margin gap
+    # 1. Left margin gap (check if edge character is touching left boundary)
     first_x = sorted_regs[0]["x"]
-    if first_x > int(char_w_est * 0.50):
+    if first_x > max(6, int(char_w_est * 0.15)):
         gaps_to_check.append((0, first_x, sorted_regs[0]["y"], sorted_regs[0]["h"]))
         
     # 2. Inter-box gaps
@@ -552,14 +558,14 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
         r1_right = r1["x"] + r1["w"]
         r2_left = r2["x"]
         gap_w = r2_left - r1_right
-        if gap_w > int(char_w_est * 0.50):
+        if gap_w > max(6, int(char_w_est * 0.25)):
             avg_y = min(r1["y"], r2["y"])
             avg_h = max(r1["y"] + r1["h"], r2["y"] + r2["h"]) - avg_y
             gaps_to_check.append((r1_right, r2_left, avg_y, avg_h))
             
-    # 3. Right margin gap
+    # 3. Right margin gap (check if edge character is touching right boundary)
     last_right = sorted_regs[-1]["x"] + sorted_regs[-1]["w"]
-    if (img_w - last_right) > int(char_w_est * 0.50):
+    if (img_w - last_right) > max(6, int(char_w_est * 0.15)):
         gaps_to_check.append((last_right, img_w, sorted_regs[-1]["y"], sorted_regs[-1]["h"]))
 
     # Scan each gap interval for unsegmented character contours
@@ -569,7 +575,7 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
         gy1 = max(0, ref_y - 4)
         gy2 = min(img_h, ref_y + ref_h + 4)
         
-        if (gx2 - gx1) > 6 and (gy2 - gy1) > 6:
+        if (gx2 - gx1) > 4 and (gy2 - gy1) > 6:
             gap_crop = gray[gy1:gy2, gx1:gx2]
             blurred = cv2.GaussianBlur(gap_crop, (3, 3), 0)
             thresh = cv2.adaptiveThreshold(
@@ -583,10 +589,10 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
             for c in cnts:
                 cx, cy, cw, ch = cv2.boundingRect(c)
                 c_area = cw * ch
-                # Require minimum width (30% of char_w_est) and aspect ratio >= 0.28 to reject stone cracks
-                if cw >= max(8, int(char_w_est * 0.30)) and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
+                # Require minimum width (15% of char_w_est) to recover edge characters
+                if cw >= max(5, int(char_w_est * 0.15)) and ch >= int(char_h_est * 0.30) and c_area > max_cnt_area:
                     asp = cw / ch
-                    if 0.28 <= asp <= 3.8:
+                    if 0.20 <= asp <= 3.8:
                         candidate_crop = gap_crop[cy:cy+ch, cx:cx+cw]
                         if not _is_stone_crack_or_blank(candidate_crop):
                             max_cnt_area = c_area
@@ -627,9 +633,13 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     if len(image_bgr.shape) == 2:
         image_bgr = cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
 
+    # Add border padding so edge characters are never cut off by image frame boundaries
+    PAD = 32
+    image_bgr = cv2.copyMakeBorder(image_bgr, PAD, PAD, PAD, PAD, cv2.BORDER_REPLICATE)
+
     orig      = image_bgr
     orig_h, orig_w = orig.shape[:2]
-    print(f"[SEG] Input: {orig_w}×{orig_h}")
+    print(f"[SEG] Input (with padding): {orig_w}×{orig_h}")
 
     # -- STEP 1: Resize to working resolution ----------------------------------
     MAX_W = 1800
@@ -788,12 +798,12 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         continue
 
                     # Touches the extreme left or right boundary of the image frame
-                    is_left = r["x"] <= 3
-                    is_right = (r["x"] + r["w"]) >= (work_w - 3)
+                    is_left = r["x"] <= 2
+                    is_right = (r["x"] + r["w"]) >= (work_w - 2)
                     
-                    # Only reject if it is an impossibly thin partial sliver (< 20% of median width)
-                    if (is_left or is_right) and r["w"] < (char_w_est * 0.20):
-                        print(f"[SEG] Rejecting partial left/right edge sliver: x={r['x']}, w={r['w']} (median_w={char_w_est})")
+                    # Only reject if it is an impossibly thin noise sliver (< 4px)
+                    if (is_left or is_right) and r["w"] < 4:
+                        print(f"[SEG] Rejecting partial left/right edge sliver: x={r['x']}, w={r['w']}")
                         continue
 
                     # Stone Crack / Fissure Suppressor:
@@ -941,7 +951,7 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
 
 
     # -- STEP 9: Overlap removal -----------------------------------------------
-    thresh = 0.85 if mode == "smart" else 0.45
+    thresh = 0.45
     regions = _remove_overlaps(regions, overlap_thresh=thresh)
     print(f"[SEG] After overlap removal: {len(regions)}")
 
@@ -1030,8 +1040,8 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
         rid   = r["_id"]
         color = LINE_COLORS[(r["line"] - 1) % len(LINE_COLORS)]
 
-        ox = int(rx * sx)
-        oy = int(ry * sy)
+        ox = max(0, int(rx * sx) - PAD)
+        oy = max(0, int(ry * sy) - PAD)
         ow = int(rw * sx)
         oh = int(rh * sy)
 

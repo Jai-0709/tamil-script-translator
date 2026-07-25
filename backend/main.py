@@ -282,6 +282,15 @@ async def translate(
                 results[i]["is_memorized"] = True
             else:
                 results[i]["is_memorized"] = False
+
+        # Filter out low-confidence noise boxes (confidence < 0.25 and not memorized)
+        valid_indices = [
+            i for i in range(len(regions))
+            if results[i].get("is_memorized") or results[i]["confidence"] >= 0.25
+        ]
+        if valid_indices:
+            regions = [regions[i] for i in valid_indices]
+            results = [results[i] for i in valid_indices]
     except Exception:
         raise HTTPException(
             status_code=500,

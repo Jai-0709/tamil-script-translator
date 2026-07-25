@@ -169,14 +169,13 @@ export default function App() {
   const handleRemoveBox = useCallback((wordId) => {
     setPopover(null)
     if (!apiResponse || !apiResponse.words) return
-    const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
-    setApiResponse(prev => ({
-      ...prev,
-      words: updatedWords,
-      word_count: updatedWords.length,
-    }))
+    const remainingWords = apiResponse.words.filter(w => w.id !== wordId)
     showToast(`Removed Box #${wordId}`)
-  }, [apiResponse])
+
+    // Pass remaining boxes to handleTranslate so full sentence & alternative readings refresh completely!
+    const newBoxes = remainingWords.map(wd => ({ x: wd.x, y: wd.y, w: wd.w, h: wd.h, line: wd.line }))
+    handleTranslate(mergeGap, selectedRegion, newBoxes)
+  }, [apiResponse, mergeGap, selectedRegion, handleTranslate])
 
   // Download corrections as JSON
   function downloadCorrections() {
