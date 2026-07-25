@@ -11,7 +11,7 @@ import traceback
 import hashlib
 import json
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 import cv2
 import uvicorn
