@@ -272,7 +272,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: imageFile.name,
-          boxes: finalBoxes
+          boxes: finalBoxes,
+          img_hash: apiResponse?.img_hash || null
         })
       })
 

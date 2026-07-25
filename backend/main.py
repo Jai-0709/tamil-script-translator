@@ -109,6 +109,12 @@ def save_user_boxes():
 
 load_user_boxes()
 
+def compute_image_hash(raw_bytes: bytes) -> str:
+    """Computes MD5 hash of raw image bytes for 100% exact visual content matching."""
+    if not raw_bytes:
+        return ""
+    return hashlib.md5(raw_bytes).hexdigest()
+
 def normalize_fname(fn: str) -> str:
     if not fn:
         return ""
@@ -117,23 +123,35 @@ def normalize_fname(fn: str) -> str:
     s = " ".join(s.split()).lower()
     return s
 
-def get_user_boxes_for_file(filename: str):
+def get_user_boxes_for_image(img_hash: str, filename: str):
+    """
+    Looks up saved layout using MD5 Image Content Hash (100% invariant to browser filename renames)
+    with filename matching as fallback.
+    """
+    # 1. Match by MD5 Image Content Hash
+    if img_hash and img_hash in user_boxes_db:
+        print(f"[CACHE MATCH] Matched saved layout by MD5 Content Hash: {img_hash[:8]}...")
+        val = user_boxes_db[img_hash]
+        return val.get("boxes", val) if isinstance(val, dict) else val
+
     if not filename:
         return []
     raw_unquoted = urllib.parse.unquote(str(filename))
     base = os.path.basename(raw_unquoted)
     
-    # 1. Direct exact match
+    # 2. Match by exact unquoted basename
     if base in user_boxes_db:
-        return user_boxes_db[base]
+        val = user_boxes_db[base]
+        return val.get("boxes", val) if isinstance(val, dict) else val
     if raw_unquoted in user_boxes_db:
-        return user_boxes_db[raw_unquoted]
+        val = user_boxes_db[raw_unquoted]
+        return val.get("boxes", val) if isinstance(val, dict) else val
         
-    # 2. Normalized whitespace / case-insensitive match
+    # 3. Match by normalized whitespace / case-insensitive filename
     target_norm = normalize_fname(filename)
-    for k in user_boxes_db:
+    for k, val in user_boxes_db.items():
         if normalize_fname(k) == target_norm:
-            return user_boxes_db[k]
+            return val.get("boxes", val) if isinstance(val, dict) else val
 
     return []
 
@@ -186,6 +204,7 @@ class TranslateResponse(BaseModel):
     line_count:     int
     image_width:    int
     image_height:   int
+    img_hash:       Optional[str] = None
 
 
 class BoundingBox(BaseModel):
@@ -264,6 +283,7 @@ async def translate(
 
     # ── 1. Read & decode image ──────────────────────────────────────────
     raw   = await file.read()
+    img_hash = compute_image_hash(raw)
     image = _decode_image(raw)
     img_h, img_w = image.shape[:2]
 
@@ -288,8 +308,8 @@ async def translate(
         # Load persistent user-saved custom segmentation layout for this image if available
         # (Skip loading full-image saved boxes if user is performing a specific region crop!)
         fname = getattr(file, "filename", None)
-        saved_boxes = get_user_boxes_for_file(fname)
-        print(f"[TRANSLATE] file='{fname}', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}")
+        saved_boxes = get_user_boxes_for_image(img_hash, fname)
+        print(f"[TRANSLATE] file='{fname}', hash='{img_hash[:8]}...', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}")
 
         if saved_boxes and not is_region_active and not custom_boxes_json:
             print(f"[TRANSLATE] Successfully applied {len(saved_boxes)} saved memory boxes for {fname}")
@@ -533,6 +553,7 @@ async def translate(
         line_count     = line_count,
         image_width    = img_w,
         image_height   = img_h,
+        img_hash       = img_hash,
     )
 
 
