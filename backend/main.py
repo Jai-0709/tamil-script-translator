@@ -108,6 +108,19 @@ def save_user_boxes():
 
 load_user_boxes()
 
+def get_user_boxes_for_file(filename: str):
+    if not filename:
+        return []
+    base = os.path.basename(filename)
+    if base in user_boxes_db:
+        return user_boxes_db[base]
+    if filename in user_boxes_db:
+        return user_boxes_db[filename]
+    for k in user_boxes_db:
+        if k in filename or filename in k or os.path.basename(k) == base:
+            return user_boxes_db[k]
+    return []
+
 def cosine_similarity(v1, v2):
     v1 = np.array(v1)
     v2 = np.array(v2)
@@ -255,15 +268,28 @@ async def translate(
 
         # Merge persistent user-added custom boxes for this image if available
         fname = getattr(file, "filename", None)
-        if fname and fname in user_boxes_db:
-            saved_boxes = user_boxes_db[fname]
-            existing_boxes = set((r["x"], r["y"], r["w"], r["h"]) for r in regions)
+        saved_boxes = get_user_boxes_for_file(fname)
+        if saved_boxes:
+            print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom boxes for {fname}")
             for sb in saved_boxes:
                 sx = max(0, int(sb["x"]))
                 sy = max(0, int(sb["y"]))
                 sw = int(sb["w"])
                 sh = int(sb["h"])
-                if (sx, sy, sw, sh) not in existing_boxes:
+                # Check IoU to avoid duplicate box insertions
+                overlap = False
+                for r in regions:
+                    rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+                    inter_x1 = max(sx, rx)
+                    inter_y1 = max(sy, ry)
+                    inter_x2 = min(sx + sw, rx + rw)
+                    inter_y2 = min(sy + sh, ry + rh)
+                    if inter_x2 > inter_x1 and inter_y2 > inter_y1:
+                        inter_area = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
+                        if inter_area / float(sw * sh) > 0.60:
+                            overlap = True
+                            break
+                if not overlap:
                     crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
                     if crop.size > 0:
                         regions.append({
