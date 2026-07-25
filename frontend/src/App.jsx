@@ -9,6 +9,7 @@ import LoadingOverlay from './components/LoadingOverlay'
 import CorrectionPopover from './components/CorrectionPopover'
 import RegionSelector from './components/RegionSelector'
 import DatasetStudio from './pages/DatasetStudio'
+import MemoryStudio from './pages/MemoryStudio'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -458,6 +459,7 @@ export default function App() {
           }}>
             {[
               ['translator', 'Translator'],
+              ['memory', 'Memory Studio'],
               ['dataset', 'Dataset Studio']
             ].map(([page, label]) => (
               <button
@@ -656,7 +658,16 @@ export default function App() {
       )}
 
       {/* ══ BODY ════════════════════════════════════════════════════════ */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+      {activePage === 'memory' ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <MemoryStudio />
+        </div>
+      ) : activePage === 'dataset' ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <DatasetStudio />
+        </div>
+      ) : (
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
 
         {/* LEFT — canvas (58%) */}
         <div style={{
@@ -813,7 +824,7 @@ export default function App() {
             />
           </div>
         </div>
-      </div>
+      )}
 
       {/* ── Toast notification ────────────────────────────────────────── */}
       {toast && (

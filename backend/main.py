@@ -654,12 +654,61 @@ def forget_memory(req: ForgetRequest):
     return {"status": "not_found"}
 
 
+@app.get("/api/memory-summary")
+def get_memory_summary():
+    """
+    Returns full summary of saved character vector memories and layout memories for Memory Studio.
+    """
+    vec_summary = []
+    for idx, mem in enumerate(correction_memory):
+        vec_summary.append({
+            "index": idx,
+            "modern_tamil": mem.get("modern_tamil", "?"),
+            "vector_len": len(mem.get("vector", []))
+        })
+        
+    return {
+        "vector_memory_count": len(correction_memory),
+        "vector_memories": vec_summary,
+        "layout_memory_count": len(user_boxes_db),
+        "layout_memories": user_boxes_db
+    }
+
+@app.delete("/api/delete-vector-memory/{index}")
+def delete_vector_memory(index: int):
+    global correction_memory
+    if 0 <= index < len(correction_memory):
+        removed = correction_memory.pop(index)
+        save_memory()
+        return {"status": "ok", "removed": removed.get("modern_tamil")}
+    raise HTTPException(status_code=400, detail="Invalid index")
+
+class DeleteLayoutRequest(BaseModel):
+    filename: str
+
+@app.post("/api/delete-layout-memory")
+def delete_layout_memory(req: DeleteLayoutRequest):
+    global user_boxes_db
+    fname = os.path.basename(req.filename)
+    if fname in user_boxes_db:
+        del user_boxes_db[fname]
+        save_user_boxes()
+        return {"status": "ok", "deleted": fname}
+    # Check fallback key
+    for k in list(user_boxes_db.keys()):
+        if os.path.basename(k) == fname or fname in k:
+            del user_boxes_db[k]
+            save_user_boxes()
+            return {"status": "ok", "deleted": k}
+    return {"status": "not_found"}
+
+@app.post("/api/clear-vector-memory")
 @app.post("/api/clear-all-memory")
 def clear_all_memory():
     global correction_memory
     correction_memory = []
     save_memory()
-    return {"status": "ok", "message": "All memory database entries cleared"}
+    return {"status": "ok", "message": "All character vector memories cleared"}
 
 
 @app.post("/segment-only", response_model=SegmentResponse)
