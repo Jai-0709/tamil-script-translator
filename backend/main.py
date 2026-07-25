@@ -421,10 +421,11 @@ async def translate(
             lines[l] = []
         lines[l].append(i)
 
-    # Sanitize initial modern_tamil results so single top-1 character is used before Beam Search
+    # Sanitize initial modern_tamil results while preserving full raw_chars for UI popover alternatives
     for r in results:
         if "modern_tamil" in r:
-            raw_c = str(r["modern_tamil"])
+            raw_c = str(r.get("raw_chars", r["modern_tamil"]))
+            r["raw_chars"] = raw_c
             if "," in raw_c and not r.get("is_memorized"):
                 r["modern_tamil"] = raw_c.split(",")[0].strip()
 
@@ -437,20 +438,19 @@ async def translate(
     for l, indices in lines.items():
         sequence_options = []
         for i in indices:
+            raw_cls = results[i].get("raw_chars", results[i]["modern_tamil"])
+            cls_variations = [c.strip() for c in raw_cls.replace(' ', '').split(',') if c.strip()]
+            
             if results[i].get("is_memorized"):
-                cid = results[i].get("ai_original_tamil", results[i]["modern_tamil"])
-                ai_chars = [c.strip() for c in cid.replace(' ', '').split(',')]
                 mem_chars = results[i].get("memorized_options", [results[i]["modern_tamil"]])
-                ui_chars = mem_chars + [c for c in ai_chars if c not in mem_chars]
+                ui_chars = list(dict.fromkeys(mem_chars + cls_variations))
                 nlp_chars = list(mem_chars)
             else:
-                cid = results[i]["modern_tamil"]
-                chars = [c.strip() for c in cid.replace(' ', '').split(',')]
-                ui_chars = chars
-                nlp_chars = list(chars)
+                ui_chars = cls_variations
+                nlp_chars = list(cls_variations)
             
             # Automatically expand nlp_chars to include base <-> pulli counterparts
-            # so Beam Search can evaluate word context (e.g. tiruppattam -> #3 is ப், #4 is ப)!
+            # so Beam Search can evaluate word context
             expanded = []
             for c in nlp_chars:
                 if c not in expanded: expanded.append(c)
