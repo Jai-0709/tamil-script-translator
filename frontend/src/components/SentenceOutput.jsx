@@ -1,14 +1,18 @@
 import { useState } from 'react'
 
-export default function SentenceOutput({ fullSentence, romanSentence, wordCount, lineCount, alternativeSentences = [], alternativeRomanSentences = [] }) {
-  const [copied, setCopied]         = useState(false)
-  const [fontSize, setFontSize]     = useState(24)
-  const [isCollapsed, setIsCollapsed] = useState(false)
-  const [showRoman, setShowRoman]   = useState(false)   // Tamil | Roman toggle
+export default function SentenceOutput({
+  fullSentence,
+  romanSentence,
+  alternativeSentences = [],
+  alternativeRomanSentences = []
+}) {
+  const [copied, setCopied]       = useState(false)
+  const [showRoman, setShowRoman] = useState(false)
 
   const activeText = showRoman ? (romanSentence || fullSentence) : fullSentence
 
   function copy() {
+    if (!activeText) return
     navigator.clipboard.writeText(activeText).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -16,216 +20,202 @@ export default function SentenceOutput({ fullSentence, romanSentence, wordCount,
   }
 
   return (
-    <div className="fade-up" style={{
+    <div style={{
       borderRadius: 10,
-      background: 'var(--bg-card-2)',
+      background: '#12141f',
       border: '1px solid var(--border)',
-      padding: '12px 14px',
-      transition: 'all 0.2s ease-in-out',
+      padding: 14,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 10,
     }}>
-      {/* Top row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: isCollapsed ? 0 : 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            style={{
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 2,
-            }}
-            title={isCollapsed ? "Expand panel" : "Collapse panel"}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-              style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.15s' }}>
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </button>
-          
-          <span style={{
-            fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
-            letterSpacing: '0.08em', color: 'var(--text-secondary)',
-          }}>
-            Full Sentence
-          </span>
-          <StatBadge>{wordCount} words</StatBadge>
-          <StatBadge>{lineCount} {lineCount === 1 ? 'line' : 'lines'}</StatBadge>
-        </div>
+      {/* Top Header Row */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+      }}>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+          color: 'var(--text-secondary)',
+        }}>
+          Full Inscription Translation
+        </span>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-
-          {/* ── Tamil | Roman toggle ── */}
-          {!isCollapsed && romanSentence && (
+        {/* Action Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Script Segmented Control */}
+          {romanSentence && (
             <div style={{
-              display: 'flex', alignItems: 'center',
-              background: 'var(--bg-card-3)', borderRadius: 6,
-              border: '1px solid var(--border)', overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              background: 'rgba(255, 255, 255, 0.04)',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              padding: 2,
             }}>
               <button
                 onClick={() => setShowRoman(false)}
                 style={{
-                  background: !showRoman ? 'var(--accent)' : 'none',
+                  background: !showRoman ? '#f97316' : 'transparent',
                   border: 'none',
                   color: !showRoman ? '#fff' : 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                  padding: '3px 9px',
-                  transition: 'background 0.15s, color 0.15s',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  transition: 'all 0.15s ease',
                 }}
-                title="Show Tamil script"
               >
                 Tamil
               </button>
               <button
                 onClick={() => setShowRoman(true)}
                 style={{
-                  background: showRoman ? 'var(--accent)' : 'none',
+                  background: showRoman ? '#f97316' : 'transparent',
                   border: 'none',
-                  borderLeft: '1px solid var(--border)',
                   color: showRoman ? '#fff' : 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600, cursor: 'pointer',
-                  padding: '3px 9px',
-                  transition: 'background 0.15s, color 0.15s',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: '2px 8px',
+                  borderRadius: 4,
+                  transition: 'all 0.15s ease',
                 }}
-                title="Show Roman/phonetic transliteration (ISO-15919)"
               >
                 Roman
               </button>
             </div>
           )}
 
-          {/* Font Size controls */}
-          {!isCollapsed && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 2,
-              background: 'var(--bg-card-3)', borderRadius: 6,
-              padding: '2px 4px', border: '1px solid var(--border)'
-            }}>
-              <button
-                onClick={() => setFontSize(prev => Math.max(14, prev - 4))}
-                disabled={fontSize <= 14}
-                style={{
-                  background: 'none', border: 'none', color: fontSize <= 14 ? 'var(--text-muted)' : 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600, cursor: fontSize <= 14 ? 'not-allowed' : 'pointer', padding: '2px 6px',
-                }}
-                title="Decrease font size"
-              >
-                A-
-              </button>
-              <button
-                onClick={() => setFontSize(24)}
-                style={{
-                  background: 'none', border: 'none', color: 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600, cursor: 'pointer', padding: '2px 4px',
-                  borderLeft: '1px solid var(--border)', borderRight: '1px solid var(--border)'
-                }}
-                title="Reset font size"
-              >
-                A
-              </button>
-              <button
-                onClick={() => setFontSize(prev => Math.min(38, prev + 4))}
-                disabled={fontSize >= 38}
-                style={{
-                  background: 'none', border: 'none', color: fontSize >= 38 ? 'var(--text-muted)' : 'var(--text-secondary)',
-                  fontSize: 10, fontWeight: 600, cursor: fontSize >= 38 ? 'not-allowed' : 'pointer', padding: '2px 6px',
-                }}
-                title="Increase font size"
-              >
-                A+
-              </button>
-            </div>
-          )}
-
+          {/* Copy Button */}
           <button
             onClick={copy}
+            disabled={!activeText}
             style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '4px 10px', borderRadius: 6, border: 'none',
-              fontSize: 11, fontWeight: 500, cursor: 'pointer',
-              fontFamily: 'Inter, sans-serif',
-              background: copied ? 'rgba(74,222,128,0.12)' : 'var(--bg-card-3)',
-              color:      copied ? 'var(--green)' : 'var(--text-secondary)',
-              transition: 'background 0.15s, color 0.15s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              padding: '4px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--border)',
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: !activeText ? 'not-allowed' : 'pointer',
+              background: copied ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+              color: copied ? '#4ade80' : 'var(--text-primary)',
+              transition: 'all 0.15s ease',
             }}
           >
-            {copied ? (
-              <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Copied!
-              </>
-            ) : (
-              <>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                  stroke="currentColor" strokeWidth="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-                Copy
-              </>
-            )}
+            {copied ? '✓ Copied' : 'Copy Output'}
           </button>
         </div>
       </div>
 
-      {/* Script label */}
-      {!isCollapsed && romanSentence && (
-        <div style={{
-          fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em',
-          textTransform: 'uppercase', marginBottom: 4,
-          display: 'flex', alignItems: 'center', gap: 4,
-        }}>
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: showRoman ? '#60a5fa' : '#f97316',
-            display: 'inline-block',
-          }}/>
-          {showRoman ? 'ISO-15919 Roman Transliteration (via Aksharamukha)' : 'Tamil Unicode Script'}
-        </div>
-      )}
+      {/* Main Translation Inset Box */}
+      <div style={{
+        background: '#090a10',
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        padding: '12px 14px',
+        maxHeight: 110,
+        overflowY: 'auto',
+      }}>
+        <p
+          className={showRoman ? '' : 'tamil-text'}
+          style={{
+            fontSize: showRoman ? 15 : 22,
+            fontWeight: 700,
+            color: 'var(--text-primary)',
+            lineHeight: 1.5,
+            wordBreak: 'break-word',
+            fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
+          }}
+        >
+          {activeText || (
+            <span style={{ opacity: 0.3, fontStyle: 'italic', fontSize: 12, fontWeight: 400 }}>
+              No translation generated yet.
+            </span>
+          )}
+        </p>
+      </div>
 
-      {/* Sentence text */}
-      {!isCollapsed && (
-        <div style={{ maxHeight: '120px', overflowY: 'auto', paddingRight: 4 }}>
-          <p
-            className={showRoman ? '' : 'tamil-text'}
-            style={{
-              fontSize: showRoman ? Math.max(14, fontSize - 6) : `${fontSize}px`,
-              fontWeight: 600,
-              color: 'var(--text-primary)',
-              lineHeight: 1.6,
-              wordBreak: 'break-word',
-              transition: 'font-size 0.15s ease-out',
-              fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
-            }}
-          >
-            {activeText || '—'}
-          </p>
-        </div>
-      )}
-
-      {/* Alternative Readings */}
-      {!isCollapsed && alternativeSentences.length > 0 && (
-        <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+      {/* Alternative Readings Grid */}
+      {alternativeSentences.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
           <div style={{
-            fontSize: 9, color: 'var(--text-secondary)', letterSpacing: '0.06em',
-            textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-            </svg>
-            Alternative AI Readings
+            <span style={{
+              fontSize: 10,
+              color: 'var(--text-muted)',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}>
+              Alternative Readings ({Math.min(alternativeSentences.length, 6)})
+            </span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '200px', overflowY: 'auto', paddingRight: 6 }}>
-            {alternativeSentences.map((altText, idx) => {
-              const textToDisplay = showRoman ? alternativeRomanSentences[idx] : altText
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+            gap: 6,
+            maxHeight: 140,
+            overflowY: 'auto',
+            paddingRight: 2,
+          }}>
+            {alternativeSentences.slice(0, 6).map((altText, idx) => {
+              const romanText = alternativeRomanSentences[idx] || ''
               return (
-                <div key={idx} style={{
-                  padding: '8px 12px', background: 'var(--bg-card-3)',
-                  borderRadius: 6, border: '1px solid var(--border)',
-                  fontSize: showRoman ? Math.max(12, fontSize - 8) : Math.max(14, fontSize - 6),
-                  color: 'var(--text-secondary)', fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
-                  wordBreak: 'break-word', lineHeight: 1.5, flexShrink: 0
-                }}>
-                  {textToDisplay}
+                <div
+                  key={idx}
+                  onClick={() => {
+                    navigator.clipboard.writeText(altText)
+                  }}
+                  style={{
+                    padding: '6px 10px',
+                    background: 'var(--bg-card-2)',
+                    borderRadius: 6,
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    gap: 2,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'
+                    e.currentTarget.style.background = 'rgba(249,115,22,0.05)'
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = 'var(--border)'
+                    e.currentTarget.style.background = 'var(--bg-card-2)'
+                  }}
+                  title="Click to copy this reading"
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Option #{idx + 1}
+                    </span>
+                    <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>📋 Copy</span>
+                  </div>
+
+                  <div className="tamil-text" style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                    {altText}
+                  </div>
+
+                  {romanText && (
+                    <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-secondary)', fontFamily: 'Inter, sans-serif' }}>
+                      {romanText}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -233,17 +223,5 @@ export default function SentenceOutput({ fullSentence, romanSentence, wordCount,
         </div>
       )}
     </div>
-  )
-}
-
-function StatBadge({ children }) {
-  return (
-    <span style={{
-      fontSize: 10, padding: '2px 7px', borderRadius: 10,
-      background: 'var(--bg-card-3)', color: 'var(--text-secondary)',
-      border: '1px solid var(--border)',
-    }}>
-      {children}
-    </span>
   )
 }

@@ -5,7 +5,7 @@
  * Shows top-3 model predictions and a manual text input.
  * Calls onCorrect(wordId, newChar) when user confirms.
  */
-export default function CorrectionPopover({ word, position, onCorrect, onClose }) {
+export default function CorrectionPopover({ word, position, onCorrect, onClose, onSplitBox, onForgetMemory }) {
   if (!word) return null
 
   const top3 = word.top3 || []
@@ -58,13 +58,51 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose }
           }}>×</button>
         </div>
 
-        <div style={{ padding: '12px 14px' }}>
+        {/* Scrollable body */}
+        <div style={{
+          maxHeight: 'calc(100vh - 120px)',
+          overflowY: 'auto', padding: '12px 14px',
+        }}>
+          {/* Manual Split */}
+          {onSplitBox && (
+            <div style={{ marginBottom: 16 }}>
+              <button
+                onClick={() => onSplitBox(word.id)}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid var(--accent)',
+                  background: 'rgba(249,115,22,0.1)', color: 'var(--accent)',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'background 0.15s'
+                }}
+                onMouseOver={e => e.currentTarget.style.background = 'rgba(249,115,22,0.2)'}
+                onMouseOut={e => e.currentTarget.style.background = 'rgba(249,115,22,0.1)'}
+              >
+                ✂️ Split Box Vertically
+              </button>
+            </div>
+          )}
 
           {/* Current prediction */}
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4,
-              textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Current Prediction
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: 'var(--text-muted)',
+                textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Current Prediction
+              </span>
+              {word.is_memorized && onForgetMemory && (
+                <button
+                  onClick={() => { onForgetMemory(word.id); onClose(); }}
+                  style={{
+                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                    color: '#ef4444', borderRadius: 4, padding: '2px 6px',
+                    fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                  }}
+                  title="Reset saved vector memory for this character"
+                >
+                  Reset Memory
+                </button>
+              )}
             </div>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 8,
@@ -78,6 +116,11 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose }
               <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
                 {Math.round(word.confidence * 100)}% confidence
               </span>
+              {word.is_memorized && (
+                <span style={{ marginLeft: 'auto', fontSize: 13, color: '#22c55e', fontWeight: 700 }}>
+                  ✓
+                </span>
+              )}
             </div>
           </div>
 

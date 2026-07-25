@@ -8,6 +8,7 @@ import SentenceOutput from './components/SentenceOutput'
 import LoadingOverlay from './components/LoadingOverlay'
 import CorrectionPopover from './components/CorrectionPopover'
 import RegionSelector from './components/RegionSelector'
+import DatasetStudio from './pages/DatasetStudio'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -48,6 +49,16 @@ export default function App() {
   // Feature 5 — Merge Distance
   const [mergeGap, setMergeGap]           = useState(4)
 
+  // Navigation
+  const [activePage, setActivePage]       = useState('translator')  // 'translator' | 'dataset'
+
+  // Toast notification
+  const [toast, setToast]                 = useState(null)  // { msg, ok }
+  function showToast(msg, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 3500)
+  }
+
   function handleFileSelect(file) {
     setImageFile(file)
     const url = URL.createObjectURL(file)
@@ -69,7 +80,7 @@ export default function App() {
     img.src = url
   }
 
-  async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion) {
+  async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion, customBoxes = null) {
     if (!imageFile) return
     
     if (!apiResponse) setIsLoading(true)
@@ -91,6 +102,10 @@ export default function App() {
       form.append('file', blob, imageFile.name)
       form.append('mode', segmentMode) // pass the mode
       form.append('merge_gap', gapOverride) // use the override
+      if (customBoxes) {
+        form.append('custom_boxes_json', JSON.stringify(customBoxes))
+      }
+      
       const { data } = await axios.post(`${BACKEND_URL}/translate`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
@@ -107,12 +122,48 @@ export default function App() {
 
   // Feature 2 — apply a correction
   const handleCorrect = useCallback((wordId, newChar) => {
+    // 1. Update UI state instantly
     setCorrections(prev => {
       const next = { ...prev, [wordId]: newChar }
       saveCorrections(next)
       return next
     })
-  }, [])
+
+    // 2. Send memory trace to backend
+    if (apiResponse && apiResponse.words) {
+      const word = apiResponse.words.find(w => w.id === wordId)
+      if (word) {
+        fetch(`${BACKEND_URL}/api/remember`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            word_id: word.id,
+            modern_tamil: newChar
+          })
+        }).catch(err => console.error("Failed to memorize:", err))
+      }
+    }
+  }, [apiResponse])
+
+  // Reset/forget vector memory for a character
+  const handleForgetMemory = useCallback((wordId) => {
+    if (apiResponse && apiResponse.words) {
+      const word = apiResponse.words.find(w => w.id === wordId)
+      if (word) {
+        fetch(`${BACKEND_URL}/api/forget-memory`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word_id: word.id })
+        })
+        .then(res => res.json())
+        .then(() => {
+          showToast(`Forgot memory for character #${word.id}`)
+          handleTranslate(mergeGap)
+        })
+        .catch(err => console.error("Failed to forget memory:", err))
+      }
+    }
+  }, [apiResponse, mergeGap])
 
   // Download corrections as JSON
   function downloadCorrections() {
@@ -130,6 +181,47 @@ export default function App() {
     a.href = URL.createObjectURL(blob)
     a.download = `corrections_${Date.now()}.json`
     a.click()
+  }
+
+  // Send corrected crops directly to the backend dataset folders
+  async function sendToDataset() {
+    if (!apiResponse || !imageFile) return
+    const corrected = apiResponse.words
+      .filter(w => corrections[w.id] !== undefined)
+      .map(w => ({
+        corrected: corrections[w.id],
+        x: w.x, y: w.y, w: w.w, h: w.h,
+        orig_w: apiResponse.image_width,
+        orig_h: apiResponse.image_height,
+      }))
+    if (corrected.length === 0) { showToast('No corrections to send!', false); return }
+
+    let fileToSend = imageFile
+    if (displayImageURL && displayImageURL !== imageURL) {
+      try {
+        const res = await fetch(displayImageURL)
+        const blob = await res.blob()
+        fileToSend = new File([blob], "region_crop.jpg", { type: "image/jpeg" })
+      } catch (e) {
+        console.error("Error creating blob from displayImageURL", e)
+      }
+    }
+
+    const form = new FormData()
+    form.append('file', fileToSend)
+    form.append('corrections', JSON.stringify(corrected))
+    try {
+      const res  = await fetch(`${BACKEND_URL}/api/dataset/add-crops`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (res.ok) {
+        showToast(`Saved ${data.saved} crop${data.saved !== 1 ? 's' : ''} to Dataset!`)
+        setCorrections({})
+      } else {
+        showToast('Failed to save crops', false)
+      }
+    } catch {
+      showToast('Connection error — is the backend running?', false)
+    }
   }
 
   // Build effective word list (with corrections applied)
@@ -150,6 +242,11 @@ export default function App() {
 
   const hasResult = apiResponse !== null
 
+  // ── Dataset Studio page (full screen swap) ────────────────────────────
+  if (activePage === 'dataset') {
+    return <DatasetStudio onBack={() => setActivePage('translator')} />
+  }
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
@@ -164,7 +261,27 @@ export default function App() {
           word={popover.word}
           position={{ x: popover.x, y: popover.y }}
           onCorrect={handleCorrect}
+          onForgetMemory={handleForgetMemory}
           onClose={() => setPopover(null)}
+          onSplitBox={(wordId) => {
+            setPopover(null)
+            if (!apiResponse || !apiResponse.words) return
+            const words = [...apiResponse.words]
+            const idx = words.findIndex(w => w.id === wordId)
+            if (idx === -1) return
+            
+            const w = words[idx]
+            words.splice(idx, 1)
+            
+            const wHalf = Math.floor(w.w / 2)
+            const box1 = { ...w, id: Date.now(), w: wHalf }
+            const box2 = { ...w, id: Date.now()+1, x: w.x + wHalf, w: w.w - wHalf }
+            
+            words.splice(idx, 0, box1, box2)
+            
+            const newBoxes = words.map(wd => ({ x: wd.x, y: wd.y, w: wd.w, h: wd.h, line: wd.line }))
+            handleTranslate(mergeGap, selectedRegion, newBoxes)
+          }}
         />
       )}
 
@@ -172,32 +289,68 @@ export default function App() {
       <header style={{
         flexShrink: 0, height: 'var(--header-h)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', background: 'var(--bg-card)',
+        padding: '0 24px', background: '#0e1017',
         borderBottom: '1px solid var(--border)',
+        zIndex: 50,
       }}>
+        {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 34, height: 34, borderRadius: 8,
-            background: 'linear-gradient(135deg, #f97316 0%, #ea6a0a 100%)',
+            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18, flexShrink: 0,
-          }}>🪨</div>
+            fontSize: 16, color: '#fff', fontWeight: 700, flexShrink: 0,
+          }}>
+            🪨
+          </div>
           <div>
-            <div className="tamil-text" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-              தமிழ் கல்வெட்டு மொழிபெயர்ப்பு
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className="tamil-text" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                தமிழ் கல்வெட்டு மொழிபெயர்ப்பு
+              </span>
+              <span style={{
+                fontSize: 10, padding: '2px 7px', borderRadius: 10,
+                background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80',
+                border: '1px solid rgba(34, 197, 94, 0.2)', fontWeight: 600,
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
+                Online
+              </span>
             </div>
-            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginTop: 1 }}>
-              Ancient Tamil Inscription Translator
+            <div style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginTop: 1 }}>
+              Ancient Tamil Inscription Translation Platform
             </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-
-          {hasResult && <Pill accent>✓ {words.length} words detected</Pill>}
-          {Object.keys(corrections).length > 0 && (
-            <Pill green>✏️ {Object.keys(corrections).length} corrected</Pill>
-          )}
+        {/* Header Right / Navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* Navigation tabs */}
+          <div style={{
+            display: 'flex', gap: 4,
+            background: 'var(--bg-card-2)',
+            borderRadius: 8, padding: 3,
+            border: '1px solid var(--border)',
+          }}>
+            {[
+              ['translator', 'Translator'],
+              ['dataset', 'Dataset Studio']
+            ].map(([page, label]) => (
+              <button
+                key={page}
+                onClick={() => setActivePage(page)}
+                style={{
+                  height: 32, padding: '0 16px', borderRadius: 6, border: 'none',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                  background: activePage === page ? 'linear-gradient(135deg, #f97316 0%, #ea6a0a 100%)' : 'transparent',
+                  color: activePage === page ? '#fff' : 'var(--text-secondary)',
+                  boxShadow: activePage === page ? '0 2px 8px rgba(249,115,22,0.3)' : 'none',
+                  transition: 'all 0.15s ease',
+                }}
+              >{label}</button>
+            ))}
+          </div>
         </div>
       </header>
 
@@ -206,7 +359,7 @@ export default function App() {
         flexShrink: 0, height: 'var(--toolbar-h)',
         display: 'flex', alignItems: 'center',
         padding: '0 20px', background: 'var(--bg-card)',
-        borderBottom: '1px solid var(--border)', gap: 12,
+        borderBottom: '1px solid var(--border)', gap: 14,
       }}>
         <UploadZone
           onFileSelect={handleFileSelect}
@@ -218,66 +371,166 @@ export default function App() {
 
         {/* ── Feature 3: Region mode toggle ── */}
         {imageURL && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button
-              onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '5px 12px', borderRadius: 6, border: 'none',
-                fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                background: regionMode ? 'rgba(249,115,22,0.15)' : 'var(--bg-card-3)',
-                color: regionMode ? 'var(--accent)' : 'var(--text-secondary)',
-                outline: regionMode ? '1px solid rgba(249,115,22,0.4)' : 'none',
-                transition: 'all 0.15s',
-              }}
-              title="Draw a rectangle to focus on a specific region of the inscription"
-            >
-              🔲 {regionMode ? 'Region Mode ON' : 'Select Region'}
-            </button>
-
-
-          </div>
+          <button
+            onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              height: 36, padding: '0 16px', borderRadius: 8,
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+              background: regionMode ? 'rgba(249,115,22,0.18)' : 'var(--bg-card-2)',
+              color: regionMode ? '#f97316' : 'var(--text-primary)',
+              border: regionMode ? '1px solid rgba(249,115,22,0.4)' : '1px solid var(--border)',
+              boxShadow: regionMode ? '0 0 12px rgba(249,115,22,0.2)' : 'none',
+              transition: 'all 0.15s ease',
+            }}
+            title="Crop & translate a specific region of interest"
+          >
+            <span style={{ fontSize: 13 }}>{regionMode ? '✂' : '🔲'}</span>
+            {regionMode ? 'Region Crop Active' : 'Select Region'}
+          </button>
         )}
 
-        {/* ── Feature 5: Merge Gap slider (only if Smart mode) ── */}
+        {/* ── Feature 5: Redesigned Easy-Access Merge Gap Control ── */}
         {imageURL && segmentMode === 'smart' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12, borderLeft: '1px solid var(--border)' }}>
-            <span style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              Merge Dist:
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '4px 10px',
+            background: 'var(--bg-card-2)',
+            border: '1px solid var(--border)',
+            borderRadius: 8,
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              Merge Gap
             </span>
+
+            {/* Stepper − button */}
+            <button
+              onClick={() => setMergeGap(m => Math.max(0, m - 1))}
+              disabled={mergeGap <= 0}
+              style={{
+                width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)',
+                background: mergeGap <= 0 ? 'transparent' : 'rgba(255,255,255,0.06)',
+                color: mergeGap <= 0 ? 'var(--text-muted)' : 'var(--text-primary)',
+                fontSize: 14, fontWeight: 700, cursor: mergeGap <= 0 ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1,
+              }}
+              title="Decrease merge gap"
+            >−</button>
+
+            {/* Smooth range slider */}
             <input
               type="range" min={0} max={20} step={1}
               value={mergeGap}
               onChange={e => setMergeGap(Number(e.target.value))}
-              onPointerUp={() => handleTranslate(mergeGap)}
-              style={{ width: 60, accentColor: '#f97316', cursor: 'pointer' }}
-              title="Max distance to automatically join split strokes together"
+              style={{
+                width: 80, height: 4, accentColor: '#f97316', cursor: 'pointer',
+                borderRadius: 2, background: 'rgba(255,255,255,0.1)'
+              }}
+              title="Adjust maximum stroke merging distance"
             />
+
+            {/* Stepper + button */}
+            <button
+              onClick={() => setMergeGap(m => Math.min(20, m + 1))}
+              disabled={mergeGap >= 20}
+              style={{
+                width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)',
+                background: mergeGap >= 20 ? 'transparent' : 'rgba(255,255,255,0.06)',
+                color: mergeGap >= 20 ? 'var(--text-muted)' : 'var(--text-primary)',
+                fontSize: 14, fontWeight: 700, cursor: mergeGap >= 20 ? 'default' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1,
+              }}
+              title="Increase merge gap"
+            >+</button>
+
+            {/* Digital Badge */}
             <span style={{
-              fontSize: 11, fontWeight: 700, minWidth: 26,
+              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+              background: mergeGap > 0 ? 'rgba(249,115,22,0.15)' : 'rgba(255,255,255,0.05)',
               color: mergeGap > 0 ? '#f97316' : 'var(--text-secondary)',
+              border: `1px solid ${mergeGap > 0 ? 'rgba(249,115,22,0.3)' : 'var(--border)'}`,
+              minWidth: 36, textAlign: 'center',
             }}>
               {mergeGap}px
             </span>
           </div>
         )}
 
-        {/* Download corrections */}
+        {/* Send to Dataset */}
         {hasResult && Object.keys(corrections).length > 0 && (
-          <div style={{ marginLeft: 'auto' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
             <button
-              onClick={downloadCorrections}
+              id="btn-send-dataset"
+              onClick={sendToDataset}
               style={{
-                padding: '4px 10px', borderRadius: 6, border: 'none',
-                background: 'var(--green)', color: '#fff',
-                fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                padding: '7px 16px', borderRadius: 7, border: 'none',
+                background: '#f97316',
+                color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                transition: 'background 0.15s ease',
               }}
+              onMouseEnter={e => { e.currentTarget.style.background='#ea580c' }}
+              onMouseLeave={e => { e.currentTarget.style.background='#f97316' }}
             >
-              📥 Export Fixes ({Object.keys(corrections).length})
+              Send to Dataset ({Object.keys(corrections).length})
             </button>
           </div>
         )}
       </div>
+
+      {/* ══ KPI METRICS STRIP ═════════════════════════════════════════ */}
+      {hasResult && (
+        <div style={{
+          flexShrink: 0, padding: '8px 24px',
+          background: 'rgba(0, 0, 0, 0.25)',
+          borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', gap: 16,
+        }}>
+          {[
+            {
+              label: 'Detected Characters',
+              val: words.length,
+              unit: 'chars',
+              color: '#f97316'
+            },
+            {
+              label: 'Average Confidence',
+              val: `${words.length ? Math.round(words.reduce((s,w)=>s+w.confidence, 0) / words.length * 100) : 0}%`,
+              unit: 'score',
+              color: '#22c55e'
+            },
+            {
+              label: 'Lines Segmented',
+              val: apiResponse?.line_count || 1,
+              unit: apiResponse?.line_count === 1 ? 'line' : 'lines',
+              color: '#3b82f6'
+            },
+            {
+              label: 'User Fixes',
+              val: Object.keys(corrections).length,
+              unit: 'active',
+              color: Object.keys(corrections).length > 0 ? '#22c55e' : '#64748b'
+            }
+          ].map(kpi => (
+            <div key={kpi.label} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: 'rgba(255, 255, 255, 0.025)',
+              border: '1px solid var(--border)',
+              borderRadius: 8, padding: '6px 16px', flex: 1,
+            }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: kpi.color, lineHeight: 1.1 }}>
+                  {kpi.val} <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)' }}>{kpi.unit}</span>
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
+                  {kpi.label}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ══ BODY ════════════════════════════════════════════════════════ */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
@@ -291,8 +544,8 @@ export default function App() {
         }}>
           {error && (
             <div style={{
-              flexShrink: 0, margin: '10px 16px 0', padding: '10px 14px', borderRadius: 8,
-              background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)',
+              flexShrink: 0, margin: '12px 16px 0', padding: '12px 16px', borderRadius: 10,
+              background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
               color: '#f87171', fontSize: 13,
             }}>
               <strong>Error: </strong>{error}
@@ -303,24 +556,23 @@ export default function App() {
           <div style={{ flexShrink: 0 }}>
             <div style={{
               position: 'sticky', top: 0, zIndex: 10,
-              padding: '6px 14px', fontSize: 10, letterSpacing: '0.08em',
-              textTransform: 'uppercase', color: 'var(--text-secondary)',
-              background: 'var(--bg-card)', borderBottom: '1px solid var(--border)',
-              borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6,
+              padding: '8px 16px', fontSize: 11, letterSpacing: '0.06em',
+              fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)',
+              background: '#0e1017',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex', alignItems: 'center', gap: 8,
             }}>
-              <span style={{ fontSize: 12 }}>
-                {regionMode ? '🔲' : '🔍'}
-              </span>
               {regionMode
-                ? 'Region Selector — Drag to select area'
-                : 'Detection View — Character Bounding Boxes'}
+                ? 'Region Selector — Drag to select focus area'
+                : 'Bounding Box Segmentation View'}
               {words.length > 0 && !regionMode && (
                 <span style={{
-                  marginLeft: 'auto', background: 'rgba(249,115,22,0.15)',
-                  color: 'var(--accent)', padding: '1px 8px', borderRadius: 20,
-                  fontSize: 10, fontWeight: 600,
+                  marginLeft: 'auto', background: 'rgba(249, 115, 22, 0.12)',
+                  color: 'var(--accent)', border: '1px solid rgba(249, 115, 22, 0.25)',
+                  padding: '2px 8px', borderRadius: 12,
+                  fontSize: 10, fontWeight: 700,
                 }}>
-                  {words.length} characters
+                  {words.length} items
                 </span>
               )}
               {regionMode && (
@@ -334,7 +586,7 @@ export default function App() {
             </div>
 
             <div style={{
-              padding: 12, display: 'flex', justifyContent: 'center',
+              padding: 14, width: '100%', boxSizing: 'border-box',
               opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
             }}>
               {imageURL ? (
@@ -361,6 +613,7 @@ export default function App() {
                       const word = words.find(w => w.id === wordId)
                       if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })
                     }}
+                    onBoxesEdited={(newBoxes) => handleTranslate(mergeGap, selectedRegion, newBoxes)}
                   />
                 )
               ) : (
@@ -382,7 +635,7 @@ export default function App() {
                 Original Image — No boxes, read the full inscription
               </div>
               <div style={{ 
-                padding: 12, display: 'flex', justifyContent: 'center',
+                padding: 14, width: '100%', boxSizing: 'border-box',
                 opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
               }}>
                 <OriginalImageViewer
@@ -432,6 +685,29 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ── Toast notification ────────────────────────────────────────── */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: toast.ok ? 'rgba(34,197,94,0.95)' : 'rgba(239,68,68,0.95)',
+          color: '#fff', fontWeight: 700, fontSize: 13,
+          padding: '10px 22px', borderRadius: 10,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+          zIndex: 9999, pointerEvents: 'none',
+          animation: 'fadeInUpToast 0.25s ease',
+          whiteSpace: 'nowrap',
+        }}>
+          {toast.msg}
+        </div>
+      )}
+
+      <style>{`
+        @keyframes fadeInUpToast {
+          from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+        }
+      `}</style>
     </div>
   )
 }

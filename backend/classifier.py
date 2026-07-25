@@ -98,6 +98,15 @@ def _load_model():
     model.load_state_dict(state)
     model.to(DEVICE)
     model.eval()
+
+    # Register forward hook to intercept feature embeddings
+    if hasattr(model, "classifier"):
+        model.classifier.register_forward_hook(_hook_fn)
+    elif hasattr(model, "_fc"):
+        model._fc.register_forward_hook(_hook_fn)
+    elif hasattr(model, "head"):
+        model.head.register_forward_hook(_hook_fn)
+
     print(f"[CLS] Model loaded successfully ({num_classes} classes).")
     return model, num_classes
 
@@ -111,6 +120,11 @@ _class_to_idx: Dict      = {}
 _idx_to_class: Dict      = {}
 _folder_to_chars: Dict   = {}
 _model_loaded: bool      = False
+_features_cache: List[np.ndarray] = []
+
+def _hook_fn(module, input, output):
+    global _features_cache
+    _features_cache.append(input[0].detach().cpu().numpy())
 
 
 def _ensure_loaded():
@@ -255,12 +269,18 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
         return []
 
     results = []
+    global _features_cache
+    
     # Process in batches to prevent Out of Memory errors on resource-constrained containers
     for i in range(0, len(crops), batch_size):
         batch_crops = crops[i : i + batch_size]
         tensors = torch.stack([_crop_to_tensor(c) for c in batch_crops]).to(DEVICE)
+        
+        _features_cache.clear()
         logits  = _model(tensors)
         probs   = F.softmax(logits, dim=1)
+        
+        batch_features = _features_cache[0] if _features_cache else np.zeros((len(batch_crops), 0))
 
         # Get top-3 predictions per crop
         top3_confs, top3_idxs = torch.topk(probs, k=min(3, probs.shape[1]), dim=1)
@@ -282,6 +302,7 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
                 "modern_tamil": best["modern_tamil"],
                 "confidence":  best["confidence"],
                 "top3":        top3,
+                "features":    batch_features[j].tolist() if len(batch_features) > j else [],
             })
 
     return results

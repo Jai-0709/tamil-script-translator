@@ -228,7 +228,10 @@ export default function RegionSelector({
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={containerRef} style={{
+      position: 'relative',
+      width: '100%',
+    }}>
       <img
         ref={imgRef}
         src={imageURL}
@@ -261,47 +264,6 @@ export default function RegionSelector({
           cursor: 'crosshair',
         }}
       />
-
-      {/* Instruction overlay — shown when no region yet */}
-      {!selectedRegion && !dragging && (
-        <div style={{
-          position: 'absolute',
-          bottom: 12, left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(6px)',
-          border: '1px solid rgba(249,115,22,0.4)',
-          borderRadius: 20,
-          padding: '5px 14px',
-          fontSize: 11,
-          color: '#ccc',
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-        }}>
-          🔲 Drag to select a region, then click Translate
-        </div>
-      )}
-
-      {/* Clear button when region committed */}
-      {selectedRegion && (
-        <button
-          onClick={onClear}
-          style={{
-            position: 'absolute',
-            top: 10, right: 10,
-            background: 'rgba(0,0,0,0.7)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            color: '#ef4444',
-            fontSize: 11,
-            fontWeight: 600,
-            cursor: 'pointer',
-            padding: '4px 10px',
-          }}
-        >
-          ✕ Clear Region
-        </button>
-      )}
     </div>
   )
 }

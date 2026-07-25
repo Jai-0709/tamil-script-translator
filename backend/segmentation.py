@@ -80,18 +80,22 @@ def _detect_image_type(gray: np.ndarray) -> str:
     Classify image into: clean_document, dark_document, photo_of_doc, stone_colour, stone_bw
     """
     h, w = gray.shape
-    bw = max(10, w // 20)
-    bh = max(10, h // 20)
+    bw = min(max(1, w // 20), max(0, w // 4 - 1))
+    bh = min(max(1, h // 20), max(0, h // 4 - 1))
 
     border_px = np.concatenate([
-        gray[:bh, :].ravel(),
-        gray[-bh:, :].ravel(),
-        gray[:, :bw].ravel(),
-        gray[:, -bw:].ravel(),
+        gray[:max(1, bh), :].ravel(),
+        gray[-max(1, bh):, :].ravel(),
+        gray[:, :max(1, bw)].ravel(),
+        gray[:, -max(1, bw):].ravel(),
     ])
 
-    bg_med      = float(np.median(border_px))
-    interior    = gray[bh:-bh, bw:-bw]
+    bg_med = float(np.median(border_px)) if border_px.size > 0 else float(np.median(gray))
+    interior = gray[bh:-bh, bw:-bw] if (h - 2 * bh > 2 and w - 2 * bw > 2) else gray
+
+    if interior.size == 0 or interior.shape[0] < 3 or interior.shape[1] < 3:
+        interior = gray
+
     int_mean    = float(interior.mean())
     int_std     = float(interior.std())
     lap_var     = float(cv2.Laplacian(interior, cv2.CV_64F).var())
@@ -633,14 +637,14 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 w_work = x2_work - x1_work
                 h_work = y2_work - y1_work
                 
-                # Reject impossibly small boxes (like 2px wide border slivers)
-                if w_work < 10 or h_work < 10:
+                # Reject impossibly small boxes (like noise specks)
+                if w_work < 8 or h_work < 8:
                     continue
                     
-                # Reject extreme aspect ratios (cracks in the stone)
-                # Tamil characters are rarely flatter than 4.5x or skinnier than 0.25x
+                # Reject extreme aspect ratios (cracks and scratches in the stone)
+                # We tighten the lower bound to 0.22 because anything skinnier is physically just a crack.
                 aspect_ratio = w_work / h_work
-                if aspect_ratio > 4.5 or aspect_ratio < 0.25:
+                if aspect_ratio > 4.5 or aspect_ratio < 0.22:
                     print(f"[SEG] Rejecting YOLO box with extreme aspect ratio (crack): w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
                     continue
                 
@@ -655,23 +659,31 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 
                 # Filter out partial characters from adjacent lines (caught at top/bottom edges of crop)
                 filtered_regions = []
+                top_edge_thresh = max(30, int(work_h * 0.12))
+                bottom_edge_thresh = work_h - top_edge_thresh
+                left_edge_thresh = max(25, int(work_w * 0.05))
+                right_edge_thresh = work_w - left_edge_thresh
+
                 for r in regions:
-                    # Touches the very top or bottom edge of the image
-                    is_top = r["y"] < (char_h_est * 0.25)
-                    is_bottom = (r["y"] + r["h"]) > (work_h - char_h_est * 0.25)
+                    # A box is a partial cut-off stroke if it starts near the top or ends near the bottom AND is abnormally short
+                    is_top = r["y"] <= top_edge_thresh
+                    is_bottom = (r["y"] + r["h"]) >= bottom_edge_thresh
                     
-                    # If it's a top/bottom edge box AND it's noticeably shorter than normal characters, it's a cut-off
-                    if (is_top or is_bottom) and r["h"] < (char_h_est * 0.65):
+                    if (is_top or is_bottom) and r["h"] < (char_h_est * 0.68):
                         print(f"[SEG] Rejecting partial top/bottom edge character: y={r['y']}, h={r['h']} (median_h={char_h_est})")
                         continue
 
-                    # Touches the very left or right edge of the image
-                    is_left = r["x"] < (char_w_est * 0.25)
-                    is_right = (r["x"] + r["w"]) > (work_w - char_w_est * 0.25)
+                    # Touches the left or right edge of the image
+                    is_left = r["x"] <= left_edge_thresh
+                    is_right = (r["x"] + r["w"]) >= right_edge_thresh
                     
-                    # If it's a left/right edge box AND it's noticeably thinner than normal characters, it's a cut-off
-                    if (is_left or is_right) and r["w"] < (char_w_est * 0.55):
+                    if (is_left or is_right) and r["w"] < (char_w_est * 0.50):
                         print(f"[SEG] Rejecting partial left/right edge character: x={r['x']}, w={r['w']} (median_w={char_w_est})")
+                        continue
+
+                    # Absolute noise check
+                    if r["h"] < 12 or r["w"] < 6:
+                        print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']}")
                         continue
                         
                     filtered_regions.append(r)
@@ -805,28 +817,52 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
         return []
 
     # -- STEP 10: Cluster into lines -------------------------------------------
-    # For Tamil script, the top of the characters (y) is much more aligned than the center or bottom,
-    # because descenders (like ழு, மு, நா) can wildly change the center y-coordinate.
-    regions.sort(key=lambda r: r["y"])
+    # For Tamil script, characters can have tall ascenders or long descenders.
+    # We sort by center Y and use a large line_gap tolerance (90% of median height)
+    # to keep slightly staggered characters on the same line.
+    for r in regions:
+        r["yc"] = r["y"] + r["h"] / 2
+
+    regions.sort(key=lambda r: r["yc"])
 
     # Use median box height to compute a robust line gap threshold
     heights = sorted([r["h"] for r in regions])
     median_h = heights[len(heights) // 2] if heights else char_h_est
-    line_gap = max(params["line_gap"], int(median_h * 0.55))
+    line_gap = max(params["line_gap"], int(median_h * 0.9)) # Increased to 0.9 for robustness
     if len(regions) < 10:
         line_gap = max(line_gap, work_h // 8)
     print(f"[SEG] Line gap: {line_gap}px  (median_h={median_h}px)")
 
     line_num = 1
-    cur_y = regions[0]["y"]
+    cur_yc = regions[0]["yc"]
     for r in regions:
-        y = r["y"]
-        if y - cur_y > line_gap:
+        yc = r["yc"]
+        if yc - cur_yc > line_gap:
             line_num += 1
-            cur_y = y
+            cur_yc = yc
         r["line"] = line_num
 
     print(f"[SEG] Lines detected: {line_num}")
+
+    # -- STEP 10.5: Filter out ghost lines containing only partial stroke fragments --
+    line_groups = {}
+    for r in regions:
+        l = r["line"]
+        if l not in line_groups:
+            line_groups[l] = []
+        line_groups[l].append(r)
+
+    max_line_boxes = max((len(boxes) for boxes in line_groups.values()), default=1)
+    surviving_regions = []
+    for l, boxes in line_groups.items():
+        avg_h = sum(b["h"] for b in boxes) / len(boxes)
+        if len(boxes) <= 3 and len(boxes) < (max_line_boxes * 0.4) and avg_h < (median_h * 0.60):
+            print(f"[SEG] Suppressing ghost line {l} with {len(boxes)} boxes and avg_h={avg_h:.1f} (median_h={median_h})")
+            continue
+        surviving_regions.extend(boxes)
+
+    if surviving_regions:
+        regions = surviving_regions
 
     # -- STEP 11: Sort by line then x -----------------------------------------
     regions.sort(key=lambda r: (r["line"], r["x"]))

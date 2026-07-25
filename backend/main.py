@@ -8,6 +8,9 @@ Endpoints:
 
 import io
 import traceback
+import hashlib
+import json
+import os
 from typing import List, Optional
 
 import cv2
@@ -58,6 +61,38 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ─────────────────────────────────────────────
+#  MEMORY DATABASE (VECTOR SIMILARITY)
+# ─────────────────────────────────────────────
+MEMORY_FILE = "corrections_memory.json"
+correction_memory = []
+_last_features = {}  # Cache to hold features for the /remember endpoint
+
+def load_memory():
+    global correction_memory
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    correction_memory = data
+                else:
+                    correction_memory = [] # migrate old hash db
+        except:
+            pass
+
+def save_memory():
+    with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(correction_memory, f, ensure_ascii=False)
+
+load_memory()
+
+def cosine_similarity(v1, v2):
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-9))
+
+
 # Pre-warm the model at startup so the first request is not slow
 @app.on_event("startup")
 async def _warmup():
@@ -87,8 +122,8 @@ class WordResult(BaseModel):
     confidence:   float
     line:         int
     is_unknown:   bool = False
-    top3:         List[Top3Item] = []
     ambiguous_options: List[str] = []
+    is_memorized: bool = False
 
 
 class TranslateResponse(BaseModel):
@@ -166,7 +201,8 @@ async def health():
 async def translate(
     file: UploadFile = File(...),
     mode: str = Form("smart"),
-    merge_gap: int = Form(4)
+    merge_gap: int = Form(4),
+    custom_boxes_json: str = Form(None)
 ):
     """
     Full pipeline: segment inscription → classify each region.
@@ -179,8 +215,22 @@ async def translate(
     img_h, img_w = image.shape[:2]
 
     # ── 2. Segment ──────────────────────────────────────────────────────
+    import json
     try:
-        regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
+        if custom_boxes_json:
+            custom_boxes = json.loads(custom_boxes_json)
+            regions = []
+            for i, box in enumerate(custom_boxes):
+                x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
+                crop = image[y:y+h, x:x+w]
+                regions.append({
+                    "x": x, "y": y, "w": w, "h": h, 
+                    "line": box.get("line", 1), 
+                    "id": i + 1, 
+                    "crop": crop
+                })
+        else:
+            regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -202,6 +252,37 @@ async def translate(
     try:
         crops   = [r["crop"] for r in regions]
         results = classifier.classify_batch(crops)
+        
+        # Inject memory overrides using Cosine Similarity (Few-Shot KNN)
+        for i, r in enumerate(regions):
+            features = results[i].get("features", [])
+            _last_features[r["id"]] = features
+            
+            best_mem_char = None
+            best_sim = 0.0
+            matching_chars = []
+            
+            if features:
+                # Scan from newest to oldest to prioritize recent user corrections
+                for mem in reversed(correction_memory):
+                    sim = cosine_similarity(features, mem["vector"])
+                    if sim > 0.90:
+                        c_val = mem["modern_tamil"]
+                        if c_val not in matching_chars:
+                            matching_chars.append(c_val)
+                        if sim > best_sim:
+                            best_sim = sim
+                            best_mem_char = c_val
+            
+            # If the structure matches past corrections, use the highest similarity match
+            if best_mem_char:
+                results[i]["memorized_options"] = matching_chars
+                results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
+                results[i]["modern_tamil"] = best_mem_char # Strictly default to best memorized match
+                results[i]["confidence"] = 1.0
+                results[i]["is_memorized"] = True
+            else:
+                results[i]["is_memorized"] = False
     except Exception:
         raise HTTPException(
             status_code=500,
@@ -222,19 +303,34 @@ async def translate(
     for l, indices in lines.items():
         sequence_options = []
         for i in indices:
-            cid = results[i]["modern_tamil"]
-            # e.g., "மு, ழு, மூ, ழூ" -> ["மு", "ழு", "மூ", "ழூ"]
-            chars = [c.strip() for c in cid.replace(' ', '').split(',')]
-            sequence_options.append(chars)
-            results[i]["ambiguous_options"] = chars
+            if results[i].get("is_memorized"):
+                # Get the AI's original guess so it is still available in the UI popover
+                cid = results[i]["ai_original_tamil"]
+                ai_chars = [c.strip() for c in cid.replace(' ', '').split(',')]
+                mem_chars = results[i]["memorized_options"]
+                
+                # UI gets both, so the user can fallback if memory is wrong
+                ui_chars = mem_chars + [c for c in ai_chars if c not in mem_chars]
+                # NLP must ONLY choose from the user's historically memorized options!
+                nlp_chars = mem_chars
+            else:
+                cid = results[i]["modern_tamil"]
+                chars = [c.strip() for c in cid.replace(' ', '').split(',')]
+                ui_chars = chars
+                nlp_chars = chars
             
-        # We ask for the top 5 most mathematically probable full-sentence interpretations.
-        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=5)
+            sequence_options.append(nlp_chars)
+            results[i]["ambiguous_options"] = ui_chars
+            
+        # We ask for the top 8 most mathematically probable full-sentence interpretations.
+        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=8)
         
         best_path = top_k_paths[0] if top_k_paths else []
         for seq_idx, i in enumerate(indices):
             if best_path and seq_idx < len(best_path):
-                results[i]["modern_tamil"] = best_path[seq_idx]
+                # DO NOT overwrite explicitly memorized user corrections with Beam Search!
+                if not results[i].get("is_memorized"):
+                    results[i]["modern_tamil"] = best_path[seq_idx]
                 
         # Store alternative paths for later
         for alt_path in top_k_paths[1:]:
@@ -265,8 +361,8 @@ async def translate(
             confidence   = cls_result["confidence"],
             line         = region["line"],
             is_unknown   = is_unknown,
-            top3         = top3_items,
-            ambiguous_options = cls_result.get("ambiguous_options", [])
+            ambiguous_options = cls_result.get("ambiguous_options", []),
+            is_memorized = cls_result.get("is_memorized", False)
         ))
 
     sentence      = _build_sentence(words)
@@ -301,6 +397,55 @@ async def translate(
         image_width    = img_w,
         image_height   = img_h,
     )
+
+
+class RememberRequest(BaseModel):
+    word_id: int
+    modern_tamil: str
+
+@app.post("/api/remember")
+def remember_correction(req: RememberRequest):
+    if req.word_id in _last_features:
+        new_vec = _last_features[req.word_id]
+        global correction_memory
+        # Remove any existing close vector matches (>0.88 similarity) so the new correction replaces old choices
+        correction_memory = [
+            mem for mem in correction_memory
+            if cosine_similarity(new_vec, mem["vector"]) <= 0.88
+        ]
+        correction_memory.append({
+            "vector": new_vec,
+            "modern_tamil": req.modern_tamil
+        })
+        save_memory()
+        return {"status": "ok"}
+    return {"status": "not_found"}
+
+
+class ForgetRequest(BaseModel):
+    word_id: int
+
+@app.post("/api/forget-memory")
+def forget_memory(req: ForgetRequest):
+    if req.word_id in _last_features:
+        target_vec = _last_features[req.word_id]
+        global correction_memory
+        initial_len = len(correction_memory)
+        correction_memory = [
+            mem for mem in correction_memory
+            if cosine_similarity(target_vec, mem["vector"]) <= 0.85
+        ]
+        save_memory()
+        return {"status": "ok", "removed": initial_len - len(correction_memory)}
+    return {"status": "not_found"}
+
+
+@app.post("/api/clear-all-memory")
+def clear_all_memory():
+    global correction_memory
+    correction_memory = []
+    save_memory()
+    return {"status": "ok", "message": "All memory database entries cleared"}
 
 
 @app.post("/segment-only", response_model=SegmentResponse)
@@ -355,6 +500,252 @@ async def segment_only(
         image_width  = img_w,
         image_height = img_h,
     )
+
+
+# ─────────────────────────────────────────────
+#  DATASET STUDIO ENDPOINTS
+# ─────────────────────────────────────────────
+import uuid
+import base64
+from pathlib import Path
+
+# Resolve CLEANED DATA SET relative to this backend file
+_DATASET_ROOT = Path(__file__).resolve().parent.parent / "CLEANED DATA SET"
+
+
+class DatasetCropItem(BaseModel):
+    corrected: str
+    x:         int
+    y:         int
+    w:         int
+    h:         int
+
+
+@app.post("/api/dataset/add-crops")
+async def dataset_add_crops(
+    file:        UploadFile = File(...),
+    corrections: str        = Form(...),   # JSON-encoded list of DatasetCropItem
+):
+    """
+    Crop corrected characters from the uploaded image and save them
+    into the CLEANED DATA SET training folders.
+    """
+    try:
+        items = json.loads(corrections)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid corrections JSON.")
+
+    raw   = await file.read()
+    image = _decode_image(raw)
+    img_h, img_w = image.shape[:2]
+
+    _DATASET_ROOT.mkdir(parents=True, exist_ok=True)
+
+    saved          = 0
+    skipped        = 0
+    classes_updated: list[str] = []
+
+    for item in items:
+        char = item.get("corrected", "").strip()
+        if not char:
+            skipped += 1
+            continue
+
+        x = float(item.get("x", 0))
+        y = float(item.get("y", 0))
+        w = float(item.get("w", 0))
+        h = float(item.get("h", 0))
+        orig_w = float(item.get("orig_w", 0))
+        orig_h = float(item.get("orig_h", 0))
+
+        if w <= 0 or h <= 0:
+            skipped += 1
+            continue
+
+        # Scale coordinates if segmentation image resolution differed from uploaded image resolution
+        if orig_w > 0 and orig_h > 0 and (abs(orig_w - img_w) > 2 or abs(orig_h - img_h) > 2):
+            scale_x = img_w / orig_w
+            scale_y = img_h / orig_h
+            x = x * scale_x
+            y = y * scale_y
+            w = w * scale_x
+            h = h * scale_y
+
+        ix, iy, iw, ih = int(x), int(y), int(w), int(h)
+
+        # 5% padding so the character isn't perfectly touching the crop edge
+        px = max(0, int(iw * 0.05))
+        py = max(0, int(ih * 0.05))
+        y1 = max(0, iy - py);  y2 = min(img_h, iy + ih + py)
+        x1 = max(0, ix - px);  x2 = min(img_w, ix + iw + px)
+
+        crop = image[y1:y2, x1:x2]
+        if crop.size == 0:
+            skipped += 1
+            continue
+
+        # Find or create the matching class folder
+        target_folder: Optional[Path] = None
+        for folder in _DATASET_ROOT.iterdir():
+            if not folder.is_dir():
+                continue
+            folder_chars = [c.strip() for c in folder.name.replace(" ", "").split(",")]
+            if char in folder_chars:
+                target_folder = folder
+                break
+
+        if target_folder is None:
+            target_folder = _DATASET_ROOT / char
+            target_folder.mkdir(parents=True, exist_ok=True)
+
+        out_path = target_folder / f"correction_{uuid.uuid4().hex[:8]}.jpg"
+        ok, buf  = cv2.imencode(".jpg", crop)
+        if ok:
+            out_path.write_bytes(buf.tobytes())
+            saved += 1
+            if char not in classes_updated:
+                classes_updated.append(char)
+        else:
+            skipped += 1
+
+    return {"saved": saved, "skipped": skipped, "classes_updated": classes_updated}
+
+
+@app.get("/api/dataset/stats")
+async def dataset_stats():
+    """
+    Return per-class image counts and up to 4 small preview thumbnails (base64).
+    """
+    if not _DATASET_ROOT.exists():
+        return {"classes": []}
+
+    result = []
+    THUMB = 64   # thumbnail size px
+
+    for folder in sorted(_DATASET_ROOT.iterdir()):
+        if not folder.is_dir():
+            continue
+
+        images = sorted(
+            list(folder.glob("*.jpg")) +
+            list(folder.glob("*.png")) +
+            list(folder.glob("*.jpeg"))
+        )
+
+        previews: list[str] = []
+        for img_path in images[:4]:
+            try:
+                data = img_path.read_bytes()
+                arr  = np.frombuffer(data, np.uint8)
+                img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+                if img is None:
+                    continue
+                h, w  = img.shape[:2]
+                scale = THUMB / max(h, w)
+                nh, nw = max(1, int(h * scale)), max(1, int(w * scale))
+                thumb = cv2.resize(img, (nw, nh))
+                _, tbuf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                previews.append(base64.b64encode(tbuf).decode())
+            except Exception:
+                pass
+
+        result.append({
+            "class_name": folder.name,
+            "count":      len(images),
+            "previews":   previews,
+        })
+
+    return {"classes": result}
+
+
+@app.get("/api/dataset/class-images/{class_name}")
+async def dataset_class_images(class_name: str):
+    """
+    Return ALL images in a class folder as base64 thumbnails with filenames.
+    Used by the Dataset Studio detail modal to show every crop.
+    """
+    safe_class = Path(class_name).name
+    folder = _DATASET_ROOT / safe_class
+
+    if not folder.exists() or not folder.is_dir():
+        raise HTTPException(status_code=404, detail=f"Class '{safe_class}' not found.")
+
+    images = sorted(
+        list(folder.glob("*.jpg")) +
+        list(folder.glob("*.png")) +
+        list(folder.glob("*.jpeg"))
+    )
+
+    THUMB = 96   # slightly larger thumbnail for the detail view
+    result = []
+
+    for idx, img_path in enumerate(images):
+        try:
+            data = img_path.read_bytes()
+            arr  = np.frombuffer(data, np.uint8)
+            img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if img is None:
+                continue
+            h, w  = img.shape[:2]
+            scale = THUMB / max(h, w)
+            nh, nw = max(1, int(h * scale)), max(1, int(w * scale))
+            thumb = cv2.resize(img, (nw, nh))
+            _, tbuf = cv2.imencode(".jpg", thumb, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            result.append({
+                "index":    idx,
+                "filename": img_path.name,
+                "b64":      base64.b64encode(tbuf).decode(),
+            })
+        except Exception:
+            pass
+
+    return {"class_name": safe_class, "total": len(images), "images": result}
+
+
+class DeleteCropRequest(BaseModel):
+    class_name: str
+    filename:   str
+
+
+@app.delete("/api/dataset/crop")
+async def dataset_delete_crop(req: DeleteCropRequest):
+    """Delete a single crop image from the dataset folder."""
+    safe_class = Path(req.class_name).name
+    safe_file  = Path(req.filename).name
+    target = _DATASET_ROOT / safe_class / safe_file
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found.")
+    if not target.is_file():
+        raise HTTPException(status_code=400, detail="Not a file.")
+    target.unlink()
+    return {"status": "deleted", "file": safe_file}
+
+
+class DeleteByIndexRequest(BaseModel):
+    class_name: str
+    index:      int
+
+
+@app.delete("/api/dataset/crop-by-index")
+async def dataset_delete_crop_by_index(req: DeleteByIndexRequest):
+    """Delete the Nth image (sorted alphabetically) in a class folder."""
+    safe_class = Path(req.class_name).name
+    folder = _DATASET_ROOT / safe_class
+    if not folder.exists() or not folder.is_dir():
+        raise HTTPException(status_code=404, detail="Class folder not found.")
+
+    images = sorted(
+        list(folder.glob("*.jpg")) +
+        list(folder.glob("*.png")) +
+        list(folder.glob("*.jpeg"))
+    )
+
+    if req.index < 0 or req.index >= len(images):
+        raise HTTPException(status_code=404, detail=f"Index {req.index} out of range (folder has {len(images)} images).")
+
+    target = images[req.index]
+    target.unlink()
+    return {"status": "deleted", "file": target.name}
 
 
 # ─────────────────────────────────────────────

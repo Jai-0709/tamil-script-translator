@@ -198,7 +198,10 @@ export default function OriginalImageViewer({
   const ZOOM_SIZE = 200   // px × px zoom panel
 
   return (
-    <div ref={containerRef} style={{ position: 'relative', width: '100%' }}>
+    <div ref={containerRef} style={{
+      position: 'relative',
+      width: '100%',
+    }}>
 
       {/* Original image */}
       <img
