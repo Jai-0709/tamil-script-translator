@@ -468,19 +468,27 @@ async def translate(
     roman_sentence = _to_roman(sentence)
     line_count    = max((w.line for w in words), default=0)
 
-    # Build alternative sentences
+    # Build alternative sentences (guaranteed zero raw commas)
     alternative_sentences = []
     alternative_roman_sentences = []
     for indices, alt_path in all_alt_paths:
         alt_words = []
         for w in words:
-            alt_words.append(WordResult(**w.dict()))
+            clean_word = WordResult(**w.dict())
+            if "," in clean_word.modern_tamil:
+                clean_word.modern_tamil = clean_word.modern_tamil.split(",")[0].strip()
+            alt_words.append(clean_word)
             
         for seq_idx, i in enumerate(indices):
             if seq_idx < len(alt_path):
-                alt_words[i].modern_tamil = alt_path[seq_idx]
+                raw_c = str(alt_path[seq_idx]).strip()
+                clean_c = raw_c.split(",")[0].strip() if "," in raw_c else raw_c
+                alt_words[i].modern_tamil = clean_c
                 
         alt_sentence = _build_sentence(alt_words)
+        if "," in alt_sentence:
+            alt_sentence = alt_sentence.replace(",", "").strip()
+            
         if alt_sentence != sentence and alt_sentence not in alternative_sentences:
             alternative_sentences.append(alt_sentence)
             alternative_roman_sentences.append(_to_roman(alt_sentence))
