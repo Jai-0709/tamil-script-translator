@@ -273,15 +273,16 @@ async def translate(
         saved_boxes = get_user_boxes_for_file(fname)
         if saved_boxes and not is_region_crop and not custom_boxes_json:
             print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom segmentation layout for {fname}")
+            # Ensure saved boxes are strictly ordered left-to-right by (line, x)
+            saved_boxes_sorted = sorted(saved_boxes, key=lambda b: (b.get("line", 1), b.get("x", 0)))
             regions = []
-            for i, sb in enumerate(saved_boxes):
+            for i, sb in enumerate(saved_boxes_sorted):
                 sx = max(0, int(sb["x"]))
                 sy = max(0, int(sb["y"]))
                 sw = int(sb["w"])
                 sh = int(sb["h"])
-                raw_c = str(sb.get("modern_tamil", ""))
+                raw_c = str(sb.get("modern_tamil", "")).strip()
                 clean_c = raw_c.split(',')[0].strip() if ',' in raw_c else raw_c
-                sb["modern_tamil"] = clean_c
                 
                 crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
                 if crop.size > 0:
@@ -289,7 +290,8 @@ async def translate(
                         "id": i + 1,
                         "_id": i + 1,
                         "x": sx, "y": sy, "w": sw, "h": sh,
-                        "line": 1,
+                        "line": sb.get("line", 1),
+                        "saved_tamil": clean_c if clean_c and clean_c != "?" else None,
                         "crop": crop
                     })
             regions.sort(key=lambda r: (r["line"], r["x"]))
@@ -341,8 +343,14 @@ async def translate(
                             best_sim = sim
                             best_mem_char = c_val
             
-            # If the structure matches past corrections, apply the best memorized character
-            if best_mem_char and not results[i].get("is_ignored"):
+            # If box loaded from user_boxes.json layout, preserve saved character choice
+            if r.get("saved_tamil"):
+                results[i]["memorized_options"] = [r["saved_tamil"]]
+                results[i]["ai_original_tamil"] = results[i]["modern_tamil"]
+                results[i]["modern_tamil"] = r["saved_tamil"]
+                results[i]["is_memorized"] = True
+            # If the structure matches past vector corrections, apply the best memorized character
+            elif best_mem_char and not results[i].get("is_ignored"):
                 results[i]["memorized_options"] = matching_chars
                 results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
                 results[i]["modern_tamil"] = best_mem_char # Default to best memorized match
