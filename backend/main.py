@@ -253,13 +253,15 @@ async def translate(
     mode: str = Form("smart"),
     merge_gap: int = Form(4),
     custom_boxes_json: str = Form(None),
-    is_region_crop: bool = Form(False)
+    is_region_crop: str = Form("false")
 ):
     """
     Full pipeline: segment inscription → classify each region.
 
     Accepts any image format supported by OpenCV (JPEG, PNG, BMP, TIFF, WEBP).
     """
+    is_region_active = str(is_region_crop).lower().strip() in ("true", "1", "yes")
+
     # ── 1. Read & decode image ──────────────────────────────────────────
     raw   = await file.read()
     image = _decode_image(raw)
@@ -287,8 +289,10 @@ async def translate(
         # (Skip loading full-image saved boxes if user is performing a specific region crop!)
         fname = getattr(file, "filename", None)
         saved_boxes = get_user_boxes_for_file(fname)
-        if saved_boxes and not is_region_crop and not custom_boxes_json:
-            print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom segmentation layout for {fname}")
+        print(f"[TRANSLATE] file='{fname}', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}")
+
+        if saved_boxes and not is_region_active and not custom_boxes_json:
+            print(f"[TRANSLATE] Successfully applied {len(saved_boxes)} saved memory boxes for {fname}")
             # Ensure saved boxes are strictly ordered left-to-right by (line, x)
             saved_boxes_sorted = sorted(saved_boxes, key=lambda b: (b.get("line", 1), b.get("x", 0)))
             regions = []
