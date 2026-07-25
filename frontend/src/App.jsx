@@ -47,7 +47,7 @@ export default function App() {
   const [segmentMode, setSegmentMode]     = useState('smart') // 'smart' or 'classic'
 
   // Feature 5 — Merge Distance
-  const [mergeGap, setMergeGap]           = useState(4)
+  const [mergeGap, setMergeGap]           = useState(0)
 
   // Navigation
   const [activePage, setActivePage]       = useState('translator')  // 'translator' | 'dataset'
