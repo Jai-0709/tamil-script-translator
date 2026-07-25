@@ -112,13 +112,23 @@ def get_user_boxes_for_file(filename: str):
     if not filename:
         return []
     base = os.path.basename(filename)
+    # 1. Exact match (highest priority)
     if base in user_boxes_db:
         return user_boxes_db[base]
     if filename in user_boxes_db:
         return user_boxes_db[filename]
+        
+    # 2. Match exact basename ignoring query parameters
     for k in user_boxes_db:
-        if k in filename or filename in k or os.path.basename(k) == base:
+        if os.path.basename(k) == base:
             return user_boxes_db[k]
+            
+    # 3. Normalized exact name match
+    norm_base = base.lower().strip()
+    for k in user_boxes_db:
+        if os.path.basename(k).lower().strip() == norm_base:
+            return user_boxes_db[k]
+
     return []
 
 def cosine_similarity(v1, v2):
