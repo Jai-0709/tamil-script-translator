@@ -236,7 +236,8 @@ async def translate(
     file: UploadFile = File(...),
     mode: str = Form("smart"),
     merge_gap: int = Form(4),
-    custom_boxes_json: str = Form(None)
+    custom_boxes_json: str = Form(None),
+    is_region_crop: bool = Form(False)
 ):
     """
     Full pipeline: segment inscription → classify each region.
@@ -267,9 +268,10 @@ async def translate(
             regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
 
         # Load persistent user-saved custom segmentation layout for this image if available
+        # (Skip loading full-image saved boxes if user is performing a specific region crop!)
         fname = getattr(file, "filename", None)
         saved_boxes = get_user_boxes_for_file(fname)
-        if saved_boxes:
+        if saved_boxes and not is_region_crop and not custom_boxes_json:
             print(f"[TRANSLATE] Loaded {len(saved_boxes)} user-saved custom segmentation layout for {fname}")
             regions = []
             for i, sb in enumerate(saved_boxes):

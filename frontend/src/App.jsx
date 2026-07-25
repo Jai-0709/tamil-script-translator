@@ -102,6 +102,7 @@ export default function App() {
       form.append('file', blob, imageFile.name)
       form.append('mode', segmentMode) // pass the mode
       form.append('merge_gap', gapOverride) // use the override
+      form.append('is_region_crop', selectedRegion ? 'true' : 'false')
       if (customBoxes) {
         form.append('custom_boxes_json', JSON.stringify(customBoxes))
       }
