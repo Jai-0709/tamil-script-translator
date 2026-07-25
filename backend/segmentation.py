@@ -941,7 +941,7 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
 
 
     # -- STEP 9: Overlap removal -----------------------------------------------
-    thresh = 0.85 if mode == "smart" else 0.45
+    thresh = 0.50
     regions = _remove_overlaps(regions, overlap_thresh=thresh)
     print(f"[SEG] After overlap removal: {len(regions)}")
 
