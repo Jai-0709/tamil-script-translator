@@ -660,57 +660,45 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     # SMART HYBRID MODE (YOLO + OpenCV Precision)
     # =========================================================================
     if mode == "smart" and _YOLO_MODEL is not None:
-        print("[SEG] Running SMART HYBRID mode (YOLO Inference)")
+        print("[SEG] Running SMART HYBRID mode (YOLO Tiled Inference)")
         
+        TILE_SIZE = 1280
+        OVERLAP = 640 # 50% overlap guarantees no character gets cut in half at a seam!
         h, w = image_bgr.shape[:2]
         yolo_boxes = []
+        
         yolo_scores = []
         
-        # If image fits within standard resolution (<= 1600x1600), run direct full-image YOLO inference!
-        if w <= 1600 and h <= 1600:
-            print(f"[SEG] Direct YOLO inference on {w}x{h} image...")
-            results = _YOLO_MODEL(image_bgr, conf=0.10, iou=0.45, augment=True, verbose=False)
-            boxes = results[0].boxes.xyxy.cpu().numpy()
-            confs = results[0].boxes.conf.cpu().numpy()
-            for i in range(len(boxes)):
-                box = boxes[i]
-                bx = int(box[0])
-                by = int(box[1])
-                bw = int(box[2] - box[0])
-                bh = int(box[3] - box[1])
-                yolo_boxes.append([bx, by, bw, bh])
-                yolo_scores.append(float(confs[i]))
-        else:
-            # Sliced Tiled Inference for large high-res banner images
-            TILE_SIZE = 1280
-            OVERLAP = 640
-            print(f"[SEG] Slicing large {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles...")
-            for y in range(0, max(1, h), max(1, TILE_SIZE - OVERLAP)):
-                for x in range(0, max(1, w), max(1, TILE_SIZE - OVERLAP)):
-                    y2 = min(y + TILE_SIZE, h)
-                    x2 = min(x + TILE_SIZE, w)
-                    y1 = max(0, y2 - TILE_SIZE)
-                    x1 = max(0, x2 - TILE_SIZE)
+        # Sliced Inference (just like training data!)
+        print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles...")
+        for y in range(0, max(1, h), max(1, TILE_SIZE - OVERLAP)):
+            for x in range(0, max(1, w), max(1, TILE_SIZE - OVERLAP)):
+                y2 = min(y + TILE_SIZE, h)
+                x2 = min(x + TILE_SIZE, w)
+                y1 = max(0, y2 - TILE_SIZE)
+                x1 = max(0, x2 - TILE_SIZE)
+                
+                if y1 >= y2 or x1 >= x2:
+                    continue
                     
-                    if y1 >= y2 or x1 >= x2:
-                        continue
-                        
-                    tile = image_bgr[y1:y2, x1:x2]
-                    results = _YOLO_MODEL(tile, conf=0.08, iou=0.45, augment=True, verbose=False)
-                    boxes = results[0].boxes.xyxy.cpu().numpy()
-                    confs = results[0].boxes.conf.cpu().numpy()
-                    
-                    for i in range(len(boxes)):
-                        box = boxes[i]
-                        bx = int(box[0] + x1)
-                        by = int(box[1] + y1)
-                        bw = int(box[2] - box[0])
-                        bh = int(box[3] - box[1])
-                        yolo_boxes.append([bx, by, bw, bh])
-                        yolo_scores.append(float(confs[i]))
-                    
-                    if x2 >= w: break
-                if y2 >= h: break
+                tile = image_bgr[y1:y2, x1:x2]
+                # Maximum sensitivity: conf=0.04, augment=True (TTA), iou=0.55
+                results = _YOLO_MODEL(tile, conf=0.04, iou=0.55, augment=True, verbose=False)
+                boxes = results[0].boxes.xyxy.cpu().numpy()
+                confs = results[0].boxes.conf.cpu().numpy()
+                
+                for i in range(len(boxes)):
+                    box = boxes[i]
+                    # Translate to original full-image coordinates (format: x, y, w, h for NMS)
+                    bx = int(box[0] + x1)
+                    by = int(box[1] + y1)
+                    bw = int(box[2] - box[0])
+                    bh = int(box[3] - box[1])
+                    yolo_boxes.append([bx, by, bw, bh])
+                    yolo_scores.append(float(confs[i]))
+                
+                if x2 >= w: break
+            if y2 >= h: break
 
         # Apply NMS to remove duplicates across overlapping slices
         if len(yolo_boxes) > 0:

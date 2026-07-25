@@ -409,6 +409,10 @@ async def translate(
             if best_path and seq_idx < len(best_path):
                 # Update with the best mathematical Beam Search contextual character
                 results[i]["modern_tamil"] = best_path[seq_idx]
+            else:
+                # Fallback to single top-1 predicted character (eliminate any raw commas)
+                raw_c = str(results[i]["modern_tamil"])
+                results[i]["modern_tamil"] = raw_c.split(',')[0].strip()
                 
         # Store alternative paths for later
         for alt_path in top_k_paths[1:]:
