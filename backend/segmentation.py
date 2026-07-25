@@ -834,26 +834,29 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 char_h_est = max(15, work_h // 10)
             
             # Automatic Projection Profile Compound Box Splitting:
-            # Splits wide boxes (w > 1.32 * char_w_est or w/h > 1.25) into 2 distinct character boxes
+            # Only splits truly massive compound boxes (w > 1.85 * char_w_est) with a deep vertical ink valley
             split_regions = []
             for r in regions:
                 rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                asp = rw / rh if rh > 0 else 1.0
-                if (rw > int(char_w_est * 1.32) or asp > 1.25) and rw > 20:
+                if rw > int(char_w_est * 1.85) and rw > 32:
                     crop = gray[ry:ry+rh, rx:rx+rw]
                     if crop.size > 0:
                         v_proj = np.sum(crop < 180, axis=0)
-                        mid_start = int(rw * 0.28)
-                        mid_end = int(rw * 0.72)
+                        mid_start = int(rw * 0.30)
+                        mid_end = int(rw * 0.70)
                         if mid_end > mid_start:
-                            min_idx = mid_start + int(np.argmin(v_proj[mid_start:mid_end]))
-                            if min_idx > 8 and (rw - min_idx) > 8:
-                                b1 = {"x": rx, "y": ry, "w": min_idx, "h": rh, "line": r.get("line", 1)}
-                                b2 = {"x": rx + min_idx, "y": ry, "w": rw - min_idx, "h": rh, "line": r.get("line", 1)}
-                                split_regions.append(b1)
-                                split_regions.append(b2)
-                                print(f"[SEG] Auto-split wide compound box w={rw} into w1={min_idx}, w2={rw-min_idx}")
-                                continue
+                            min_val = np.min(v_proj[mid_start:mid_end])
+                            mean_val = np.mean(v_proj)
+                            # Only split if there is a genuine deep ink valley between 2 characters
+                            if min_val < (mean_val * 0.40):
+                                min_idx = mid_start + int(np.argmin(v_proj[mid_start:mid_end]))
+                                if min_idx > 10 and (rw - min_idx) > 10:
+                                    b1 = {"x": rx, "y": ry, "w": min_idx, "h": rh, "line": r.get("line", 1)}
+                                    b2 = {"x": rx + min_idx, "y": ry, "w": rw - min_idx, "h": rh, "line": r.get("line", 1)}
+                                    split_regions.append(b1)
+                                    split_regions.append(b2)
+                                    print(f"[SEG] Auto-split wide compound box w={rw} into w1={min_idx}, w2={rw-min_idx}")
+                                    continue
                 split_regions.append(r)
             regions = split_regions
 
