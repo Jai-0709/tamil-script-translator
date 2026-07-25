@@ -367,6 +367,13 @@ async def translate(
             lines[l] = []
         lines[l].append(i)
 
+    # Sanitize initial modern_tamil results so single top-1 character is used before Beam Search
+    for r in results:
+        if "modern_tamil" in r:
+            raw_c = str(r["modern_tamil"])
+            if "," in raw_c and not r.get("is_memorized"):
+                r["modern_tamil"] = raw_c.split(",")[0].strip()
+
     # Dotted <-> Base Consonant Mappings for Contextual Phonetic Expansion
     PULLI_MAP = {'க': 'க்', 'ங': 'ங்', 'ச': 'ச்', 'ஞ': 'ஞ்', 'ட': 'ட்', 'ண': 'ண்', 'த': 'த்', 'ந': 'ந்', 'ப': 'ப்', 'ம': 'ம்', 'ய': 'ய்', 'ர': 'ர்', 'ல': 'ல்', 'வ': 'வ்', 'ழ': 'ழ்', 'ள': 'ள்', 'ற': 'ற்', 'ன': 'ன்'}
     UNPULLI_MAP = {v: k for k, v in PULLI_MAP.items()}
