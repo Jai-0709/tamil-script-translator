@@ -169,13 +169,27 @@ export default function App() {
   const handleRemoveBox = useCallback((wordId) => {
     setPopover(null)
     if (!apiResponse || !apiResponse.words) return
+    const word = apiResponse.words.find(w => w.id === wordId)
     const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
+
     setApiResponse(prev => ({
       ...prev,
       words: updatedWords,
       word_count: updatedWords.length,
     }))
     showToast(`Removed Box #${wordId}`)
+
+    // Store in backend vector memory as __IGNORE__ so future uploads auto-suppress this box!
+    if (word) {
+      fetch(`${BACKEND_URL}/api/remember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          word_id: word.id,
+          modern_tamil: '__IGNORE__'
+        })
+      }).catch(err => console.error("Failed to memorize ignored box:", err))
+    }
   }, [apiResponse])
 
   // Download corrections as JSON

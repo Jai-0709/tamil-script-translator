@@ -268,6 +268,9 @@ async def translate(
                     sim = cosine_similarity(features, mem["vector"])
                     if sim > 0.90:
                         c_val = mem["modern_tamil"]
+                        if c_val == "__IGNORE__":
+                            results[i]["is_ignored"] = True
+                            break
                         if c_val not in matching_chars:
                             matching_chars.append(c_val)
                         if sim > best_sim:
@@ -275,13 +278,22 @@ async def translate(
                             best_mem_char = c_val
             
             # If the structure matches past corrections, apply the best memorized character
-            if best_mem_char:
+            if best_mem_char and not results[i].get("is_ignored"):
                 results[i]["memorized_options"] = matching_chars
                 results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
                 results[i]["modern_tamil"] = best_mem_char # Default to best memorized match
                 results[i]["is_memorized"] = True
             else:
                 results[i]["is_memorized"] = False
+
+        # Filter out low-confidence noise boxes and user-ignored memory boxes
+        valid_indices = [
+            i for i in range(len(regions))
+            if not results[i].get("is_ignored") and (results[i].get("is_memorized") or results[i]["confidence"] >= 0.25)
+        ]
+        if valid_indices:
+            regions = [regions[i] for i in valid_indices]
+            results = [results[i] for i in valid_indices]
     except Exception:
         raise HTTPException(
             status_code=500,
