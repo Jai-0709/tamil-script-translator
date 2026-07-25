@@ -495,6 +495,12 @@ def _is_stone_crack_or_blank(crop_gray: np.ndarray) -> bool:
     if ch < 8 or cw < 8:
         return True
 
+    # 0. Check intensity standard deviation (blank stone texture has flat uniform gray contrast)
+    std_dev = float(np.std(crop_gray))
+    if std_dev < 12.0:
+        print(f"[SEG] Rejecting blank stone crop with flat contrast: std_dev={std_dev:.2f}")
+        return True
+
     # 1. Binarize using CLAHE + Adaptive
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
     enhanced = clahe.apply(crop_gray)
@@ -508,8 +514,8 @@ def _is_stone_crack_or_blank(crop_gray: np.ndarray) -> bool:
     stroke_pixels = cv2.countNonZero(thresh)
     stroke_density = stroke_pixels / (cw * ch)
     
-    # If stroke density is extremely low (< 7.5% of crop area), it's empty stone / crack
-    if stroke_density < 0.075:
+    # If stroke density is low (< 11.0% of crop area), it's empty stone / crack
+    if stroke_density < 0.110:
         print(f"[SEG] Rejecting box with low stroke density (crack/blank stone): density={stroke_density:.3f}")
         return True
         
