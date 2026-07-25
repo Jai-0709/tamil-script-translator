@@ -530,29 +530,29 @@ export default function App() {
 
             {/* Stepper − button */}
             <button
-              onClick={() => setMergeGap(m => Math.max(0, m - 1))}
-              disabled={mergeGap <= 0}
+              onClick={() => setMergeGap(m => Math.max(-5, m - 1))}
+              disabled={mergeGap <= -5}
               style={{
                 width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)',
-                background: mergeGap <= 0 ? 'transparent' : 'rgba(255,255,255,0.06)',
-                color: mergeGap <= 0 ? 'var(--text-muted)' : 'var(--text-primary)',
-                fontSize: 14, fontWeight: 700, cursor: mergeGap <= 0 ? 'default' : 'pointer',
+                background: mergeGap <= -5 ? 'transparent' : 'rgba(255,255,255,0.06)',
+                color: mergeGap <= -5 ? 'var(--text-muted)' : 'var(--text-primary)',
+                fontSize: 14, fontWeight: 700, cursor: mergeGap <= -5 ? 'default' : 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 lineHeight: 1,
               }}
-              title="Decrease merge gap"
+              title="Decrease merge gap (negative values perform active box splitting)"
             >−</button>
 
             {/* Smooth range slider */}
             <input
-              type="range" min={0} max={20} step={1}
+              type="range" min={-5} max={20} step={1}
               value={mergeGap}
               onChange={e => setMergeGap(Number(e.target.value))}
               style={{
                 width: 80, height: 4, accentColor: '#f97316', cursor: 'pointer',
                 borderRadius: 2, background: 'rgba(255,255,255,0.1)'
               }}
-              title="Adjust maximum stroke merging distance"
+              title="Negative values (-1 to -5) split wide merged boxes. Positive values merge nearby boxes."
             />
 
             {/* Stepper + button */}
