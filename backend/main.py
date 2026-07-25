@@ -108,25 +108,30 @@ def save_user_boxes():
 
 load_user_boxes()
 
+def normalize_fname(fn: str) -> str:
+    if not fn:
+        return ""
+    s = urllib.parse.unquote(str(fn))
+    s = os.path.basename(s)
+    s = " ".join(s.split()).lower()
+    return s
+
 def get_user_boxes_for_file(filename: str):
     if not filename:
         return []
-    base = os.path.basename(filename)
-    # 1. Exact match (highest priority)
+    raw_unquoted = urllib.parse.unquote(str(filename))
+    base = os.path.basename(raw_unquoted)
+    
+    # 1. Direct exact match
     if base in user_boxes_db:
         return user_boxes_db[base]
-    if filename in user_boxes_db:
-        return user_boxes_db[filename]
+    if raw_unquoted in user_boxes_db:
+        return user_boxes_db[raw_unquoted]
         
-    # 2. Match exact basename ignoring query parameters
+    # 2. Normalized whitespace / case-insensitive match
+    target_norm = normalize_fname(filename)
     for k in user_boxes_db:
-        if os.path.basename(k) == base:
-            return user_boxes_db[k]
-            
-    # 3. Normalized exact name match
-    norm_base = base.lower().strip()
-    for k in user_boxes_db:
-        if os.path.basename(k).lower().strip() == norm_base:
+        if normalize_fname(k) == target_norm:
             return user_boxes_db[k]
 
     return []
@@ -619,7 +624,8 @@ async def save_final_segmentation(req: SaveSegmentationRequest):
     Saves the final user-edited segmentation layout for an image filename to user_boxes.json.
     """
     global user_boxes_db
-    fname = os.path.basename(req.filename) if req.filename else "custom_image.jpg"
+    raw_fn = req.filename or "custom_image.jpg"
+    fname = urllib.parse.unquote(os.path.basename(raw_fn)).strip()
     
     clean_boxes = []
     for b in req.boxes:
@@ -631,8 +637,15 @@ async def save_final_segmentation(req: SaveSegmentationRequest):
             "modern_tamil": str(b.get("modern_tamil", ""))
         })
         
+    # Remove any existing normalized duplicates before updating
+    target_norm = normalize_fname(fname)
+    for k in list(user_boxes_db.keys()):
+        if normalize_fname(k) == target_norm:
+            del user_boxes_db[k]
+
     user_boxes_db[fname] = clean_boxes
     save_user_boxes()
+    print(f"[SAVE] Saved {len(clean_boxes)} custom boxes for {fname}")
     return {"status": "ok", "saved_count": len(clean_boxes), "filename": fname}
 
 
