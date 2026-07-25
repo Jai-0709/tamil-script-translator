@@ -621,18 +621,6 @@ async def classify_crop(
         })
         save_memory()
 
-    # Save user box to user_boxes.json for this image filename
-    fname = filename or getattr(file, "filename", None)
-    if fname:
-        global user_boxes_db
-        if fname not in user_boxes_db:
-            user_boxes_db[fname] = []
-        user_boxes_db[fname].append({
-            "x": int(x), "y": int(y), "w": int(w), "h": int(h),
-            "modern_tamil": res["modern_tamil"]
-        })
-        save_user_boxes()
-
     return {
         "modern_tamil": res["modern_tamil"],
         "confidence": float(res["confidence"]),
@@ -643,6 +631,7 @@ async def classify_crop(
 class SaveSegmentationRequest(BaseModel):
     filename: str
     boxes: List[Dict]
+    img_hash: Optional[str] = None
 
 @app.post("/api/save-final-segmentation")
 async def save_final_segmentation(req: SaveSegmentationRequest):
@@ -670,6 +659,10 @@ async def save_final_segmentation(req: SaveSegmentationRequest):
             del user_boxes_db[k]
 
     user_boxes_db[fname] = clean_boxes
+    if req.img_hash:
+        user_boxes_db[req.img_hash] = clean_boxes
+        print(f"[SAVE] Indexed {len(clean_boxes)} custom boxes under MD5 hash {req.img_hash[:8]}...")
+
     save_user_boxes()
 
     # Automatically extract and save feature vectors into global vector memory for cross-image learning
