@@ -250,6 +250,7 @@ def classify_crop(crop: np.ndarray) -> Dict:
     return {
         "class_id":    best["class"],
         "modern_tamil": best["modern_tamil"],
+        "raw_chars":   best["raw_options"],
         "confidence":  best["confidence"],
         "top3":        top3,
     }
@@ -304,6 +305,7 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
             results.append({
                 "class_id":    best["class"],
                 "modern_tamil": best["modern_tamil"],
+                "raw_chars":   best["raw_options"],
                 "confidence":  best["confidence"],
                 "top3":        top3,
                 "features":    batch_features[j].tolist() if len(batch_features) > j else [],
