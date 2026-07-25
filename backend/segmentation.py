@@ -835,32 +835,8 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
             # At 20px gap, multiplier is 3.5x median width.
             multiplier = 1.5 + (merge_gap_x / 10.0)
 
-            # Handle negative merge gap (e.g. -1 to -5): Split wide compound boxes into single characters
-            if merge_gap_x < 0:
-                split_factor = abs(merge_gap_x)
-                max_allowed_w = int(char_w_est * max(0.7, 1.4 - split_factor * 0.12))
-                new_regions = []
-                for r in regions:
-                    rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                    if rw > max_allowed_w and rw > 16:
-                        crop = gray[ry:ry+rh, rx:rx+rw]
-                        if crop.size > 0:
-                            v_proj = np.sum(crop < 180, axis=0)
-                            mid_start = int(rw * 0.28)
-                            mid_end = int(rw * 0.72)
-                            if mid_end > mid_start:
-                                min_idx = mid_start + int(np.argmin(v_proj[mid_start:mid_end]))
-                                if min_idx > 6 and (rw - min_idx) > 6:
-                                    b1 = {"x": rx, "y": ry, "w": min_idx, "h": rh, "line": r.get("line", 1)}
-                                    b2 = {"x": rx + min_idx, "y": ry, "w": rw - min_idx, "h": rh, "line": r.get("line", 1)}
-                                    new_regions.append(b1)
-                                    new_regions.append(b2)
-                                    print(f"[SEG] Negative gap ({merge_gap_x}px): split wide box w={rw} into w1={min_idx}, w2={rw-min_idx}")
-                                    continue
-                    new_regions.append(r)
-                regions = new_regions
-
-            elif merge_gap_x > 0:
+            before_merge = len(regions)
+            if merge_gap_x > 0:
                 regions = _merge_nearby_boxes(
                     regions, 
                     merge_x=merge_gap_x, 
@@ -868,6 +844,7 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     max_w=int(char_w_est * multiplier),
                     max_h=int(char_h_est * multiplier)
                 )
+                print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
                 print(f"[SEG] Compound Character Auto-Merge (gap={merge_gap_x}): {before_merge} -> {len(regions)} boxes.")
 
             # ── Automatic Gap Character Recovery ──
