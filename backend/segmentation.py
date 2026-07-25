@@ -485,58 +485,75 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
 
 def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est: int, char_h_est: int) -> List[Dict]:
     """
-    Scans the horizontal gaps between consecutive detected boxes.
-    If a gap is wider than 60% of median character width, performs multi-strategy
+    Scans left margin, inter-box gaps, and right margin.
+    If any gap is wider than 50% of median character width, performs multi-strategy
     contour extraction in that gap to recover any missing / unsegmented character!
     """
-    if len(regions) < 2:
+    if len(regions) < 1:
         return regions
 
     sorted_regs = sorted(regions, key=lambda r: r["x"])
     recovered = []
     
+    img_h, img_w = gray.shape[:2]
+    gaps_to_check = []
+    
+    # 1. Left margin gap
+    first_x = sorted_regs[0]["x"]
+    if first_x > int(char_w_est * 0.50):
+        gaps_to_check.append((0, first_x, sorted_regs[0]["y"], sorted_regs[0]["h"]))
+        
+    # 2. Inter-box gaps
     for i in range(len(sorted_regs) - 1):
         r1 = sorted_regs[i]
         r2 = sorted_regs[i + 1]
-        
         r1_right = r1["x"] + r1["w"]
         r2_left = r2["x"]
         gap_w = r2_left - r1_right
-        
-        # If the gap between two boxes is large enough to hold an unsegmented character
-        if gap_w > int(char_w_est * 0.60):
-            gx1 = max(0, r1_right - 2)
-            gx2 = min(gray.shape[1], r2_left + 2)
-            gy1 = max(0, min(r1["y"], r2["y"]) - 4)
-            gy2 = min(gray.shape[0], max(r1["y"] + r1["h"], r2["y"] + r2["h"]) + 4)
+        if gap_w > int(char_w_est * 0.50):
+            avg_y = min(r1["y"], r2["y"])
+            avg_h = max(r1["y"] + r1["h"], r2["y"] + r2["h"]) - avg_y
+            gaps_to_check.append((r1_right, r2_left, avg_y, avg_h))
             
-            if (gx2 - gx1) > 6 and (gy2 - gy1) > 6:
-                gap_crop = gray[gy1:gy2, gx1:gx2]
-                blurred = cv2.GaussianBlur(gap_crop, (3, 3), 0)
-                thresh = cv2.adaptiveThreshold(
-                    blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
-                )
-                
-                cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                best_cnt_box = None
-                max_cnt_area = 0
-                
-                for c in cnts:
-                    cx, cy, cw, ch = cv2.boundingRect(c)
-                    c_area = cw * ch
-                    if cw >= 6 and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
-                        asp = cw / ch
-                        if 0.18 <= asp <= 3.8:
-                            max_cnt_area = c_area
-                            best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
-                            
-                if best_cnt_box:
-                    bx, by, bw, bh = best_cnt_box
-                    print(f"[SEG] Recovered missing gap character: x={bx}, y={by}, w={bw}, h={bh}")
-                    recovered.append({"x": bx, "y": by, "w": bw, "h": bh, "line": 0})
-                    
+    # 3. Right margin gap
+    last_right = sorted_regs[-1]["x"] + sorted_regs[-1]["w"]
+    if (img_w - last_right) > int(char_w_est * 0.50):
+        gaps_to_check.append((last_right, img_w, sorted_regs[-1]["y"], sorted_regs[-1]["h"]))
+
+    # Scan each gap interval for unsegmented character contours
+    for gx1_raw, gx2_raw, ref_y, ref_h in gaps_to_check:
+        gx1 = max(0, gx1_raw - 2)
+        gx2 = min(img_w, gx2_raw + 2)
+        gy1 = max(0, ref_y - 4)
+        gy2 = min(img_h, ref_y + ref_h + 4)
+        
+        if (gx2 - gx1) > 6 and (gy2 - gy1) > 6:
+            gap_crop = gray[gy1:gy2, gx1:gx2]
+            blurred = cv2.GaussianBlur(gap_crop, (3, 3), 0)
+            thresh = cv2.adaptiveThreshold(
+                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2
+            )
+            
+            cnts, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            best_cnt_box = None
+            max_cnt_area = 0
+            
+            for c in cnts:
+                cx, cy, cw, ch = cv2.boundingRect(c)
+                c_area = cw * ch
+                if cw >= 6 and ch >= int(char_h_est * 0.35) and c_area > max_cnt_area:
+                    asp = cw / ch
+                    if 0.18 <= asp <= 3.8:
+                        max_cnt_area = c_area
+                        best_cnt_box = (gx1 + cx, gy1 + cy, cw, ch)
+                        
+            if best_cnt_box:
+                bx, by, bw, bh = best_cnt_box
+                print(f"[SEG] Recovered missing margin/gap character: x={bx}, y={by}, w={bw}, h={bh}")
+                recovered.append({"x": bx, "y": by, "w": bw, "h": bh, "line": 0})
+
     if recovered:
-        print(f"[SEG] Inter-Box Gap Recovery engine successfully restored {len(recovered)} missed characters.")
+        print(f"[SEG] End-to-End Gap Recovery engine successfully restored {len(recovered)} missed characters.")
         
     return regions + recovered
 
@@ -726,12 +743,13 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                         print(f"[SEG] Rejecting partial top/bottom edge character: y={r['y']}, h={r['h']} (median_h={char_h_est})")
                         continue
 
-                    # Touches the left or right edge of the image
-                    is_left = r["x"] <= left_edge_thresh
-                    is_right = (r["x"] + r["w"]) >= right_edge_thresh
+                    # Touches the extreme left or right boundary of the image frame
+                    is_left = r["x"] <= 3
+                    is_right = (r["x"] + r["w"]) >= (work_w - 3)
                     
-                    if (is_left or is_right) and r["w"] < (char_w_est * 0.50):
-                        print(f"[SEG] Rejecting partial left/right edge character: x={r['x']}, w={r['w']} (median_w={char_w_est})")
+                    # Only reject if it is an impossibly thin partial sliver (< 20% of median width)
+                    if (is_left or is_right) and r["w"] < (char_w_est * 0.20):
+                        print(f"[SEG] Rejecting partial left/right edge sliver: x={r['x']}, w={r['w']} (median_w={char_w_est})")
                         continue
 
                     # Absolute noise check
