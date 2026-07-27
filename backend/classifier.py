@@ -244,13 +244,20 @@ def classify_crop(crop: np.ndarray) -> Dict:
             "confidence":   round(float(conf), 4),
         })
 
-    # Top-1 is the first entry
     best = top3[0]
+    all_raw_list = []
+    for t in top3:
+        raw_opt = t["raw_options"]
+        opts = [c.strip() for c in str(raw_opt).split(',') if c.strip()]
+        for opt in opts:
+            if opt not in all_raw_list:
+                all_raw_list.append(opt)
+    all_raw_chars = ", ".join(all_raw_list) if all_raw_list else best["raw_options"]
 
     return {
         "class_id":    best["class"],
         "modern_tamil": best["modern_tamil"],
-        "raw_chars":   best["raw_options"],
+        "raw_chars":   all_raw_chars,
         "confidence":  best["confidence"],
         "top3":        top3,
     }
@@ -302,10 +309,20 @@ def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
                     "confidence":   round(float(conf), 4),
                 })
             best = top3[0]
+            # Combine options across top-3 predictions for NLP Beam Search
+            all_raw_list = []
+            for t in top3:
+                raw_opt = t["raw_options"]
+                opts = [c.strip() for c in str(raw_opt).split(',') if c.strip()]
+                for opt in opts:
+                    if opt not in all_raw_list:
+                        all_raw_list.append(opt)
+            all_raw_chars = ", ".join(all_raw_list) if all_raw_list else best["raw_options"]
+
             results.append({
                 "class_id":    best["class"],
                 "modern_tamil": best["modern_tamil"],
-                "raw_chars":   best["raw_options"],
+                "raw_chars":   all_raw_chars,
                 "confidence":  best["confidence"],
                 "top3":        top3,
                 "features":    batch_features[j].tolist() if len(batch_features) > j else [],
