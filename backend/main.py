@@ -460,10 +460,10 @@ async def translate(
                     expanded_tuples.append((c, w_conf))
                 if c in UNPULLI_MAP and UNPULLI_MAP[c] not in seen_c:
                     seen_c.add(UNPULLI_MAP[c])
-                    expanded_tuples.append((UNPULLI_MAP[c], w_conf * 0.90))
+                    expanded_tuples.append((UNPULLI_MAP[c], w_conf * 1.0))
                 if c in PULLI_MAP and PULLI_MAP[c] not in seen_c:
                     seen_c.add(PULLI_MAP[c])
-                    expanded_tuples.append((PULLI_MAP[c], w_conf * 0.90))
+                    expanded_tuples.append((PULLI_MAP[c], w_conf * 1.0))
                     
             sequence_options.append(expanded_tuples)
             results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + [t[0] for t in expanded_tuples]))

@@ -362,7 +362,8 @@ export default function App() {
     for (const w of ws) lines[w.line] = [...(lines[w.line] || []), w.modern_tamil]
     return Object.keys(lines).sort((a,b)=>a-b).map(l => lines[l].join('')).join('  ')
   }
-  const effectiveSentence = words.length ? buildSentence(words) : (apiResponse?.full_sentence || '')
+  const hasUserCorrections = Object.keys(corrections).length > 0
+  const effectiveSentence = hasUserCorrections ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
 
   const hasResult = apiResponse !== null
 
