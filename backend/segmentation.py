@@ -848,13 +848,13 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 char_h_est = max(15, work_h // 10)
             
             # Automatic Projection Profile Compound Box Splitting:
-            # Splits wide or multi-character compound boxes (rw > 1.35 * char_w_est or asp > 1.25)
+            # Splits wide multi-word compound boxes (rw > 1.85 * char_w_est or asp > 1.45)
             # ONLY when a genuine vertical background ink gap exists between the characters.
             split_regions = []
             for r in regions:
                 rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
                 asp = rw / rh if rh > 0 else 1.0
-                if (rw > int(char_w_est * 1.35) or asp > 1.25) and rw > 25:
+                if (rw > int(char_w_est * 1.85) and asp > 1.45) and rw > 35:
                     crop = gray[ry:ry+rh, rx:rx+rw]
                     if crop.size > 0:
                         v_proj = np.sum(crop < 180, axis=0)
@@ -1041,25 +1041,38 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     if surviving_regions:
         regions = surviving_regions
 
-    # -- STEP 11: Sort by line then x + Trim adjacent box overlap boundary ──────
+    # -- STEP 11: Sort by line then x + Merge adjacent touching compound glyphs ──
     regions.sort(key=lambda r: (r["line"], r["x"]))
     
-    # Trim minor horizontal overlaps between adjacent boxes on the same line to prevent stroke bleeding
-    for i in range(len(regions) - 1):
-        r1 = regions[i]
-        r2 = regions[i + 1]
-        if r1.get("line", 1) == r2.get("line", 1):
-            r1_right = r1["x"] + r1["w"]
-            r2_left = r2["x"]
-            if r1_right > r2_left:
-                overlap = r1_right - r2_left
-                min_w = min(r1["w"], r2["w"])
-                if overlap < int(min_w * 0.40):
-                    mid_x = (r1_right + r2_left) // 2
-                    r1["w"] = max(6, mid_x - r1["x"])
-                    r2_orig_right = r2["x"] + r2["w"]
-                    r2["x"] = mid_x
-                    r2["w"] = max(6, r2_orig_right - mid_x)
+    # Merge adjacent touching or overlapping boxes on the same line (e.g., kombu + consonant + aravu = single compound letter)
+    merged_regions = []
+    i = 0
+    while i < len(regions):
+        curr = regions[i]
+        while i < len(regions) - 1:
+            nxt = regions[i + 1]
+            if curr.get("line", 1) == nxt.get("line", 1):
+                curr_right = curr["x"] + curr["w"]
+                nxt_left = nxt["x"]
+                # If adjacent boxes touch or overlap (gap <= merge_gap_x)
+                if curr_right >= (nxt_left - max(4, merge_gap_x)):
+                    mx1 = min(curr["x"], nxt["x"])
+                    my1 = min(curr["y"], nxt["y"])
+                    mx2 = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"])
+                    my2 = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"])
+                    merged_w = mx2 - mx1
+                    merged_h = my2 - my1
+                    # Merge if resulting box is within valid compound Tamil character width
+                    if merged_w <= int(char_w_est * 2.2):
+                        curr = {"x": mx1, "y": my1, "w": merged_w, "h": merged_h, "line": curr.get("line", 1)}
+                        i += 1
+                        print(f"[SEG] Merged adjacent compound Tamil glyphs into single box: w={merged_w}")
+                        continue
+            break
+        merged_regions.append(curr)
+        i += 1
+
+    regions = merged_regions
 
     for i, r in enumerate(regions):
         r["_id"] = i + 1
