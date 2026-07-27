@@ -60,13 +60,14 @@ class NLPEngine:
         num_transitions = max(1, len(sequence) - 1)
         return total_log_prob / num_transitions
 
-    def beam_search_decode(self, sequence_options: List[List[str]], top_k: int = 3) -> List[List[str]]:
+    def beam_search_decode(self, sequence_options: List[List], top_k: int = 3) -> List[List[str]]:
         """
         Solves the ambiguous character puzzle using Beam Search.
-        Finds the top_k most mathematically probable full sequence paths.
+        Finds the top_k most mathematically probable full sequence paths by combining
+        Vision Classifier scores + Tamil Language Model N-gram transition probabilities.
         
         Args:
-            sequence_options: List of possible characters for each position.
+            sequence_options: List of possible characters (or tuples of (char, score)) for each position.
             top_k: Number of alternative paths to return.
             
         Returns:
@@ -75,40 +76,65 @@ class NLPEngine:
         if not sequence_options:
             return []
             
+        # Standardize options to (char_str, vision_log_prob)
+        parsed_sequence = []
+        for opts in sequence_options:
+            parsed_opts = []
+            for item in opts:
+                if isinstance(item, tuple):
+                    c_str, score = item
+                    import math
+                    v_prob = math.log(max(0.01, float(score)))
+                else:
+                    c_str = str(item)
+                    v_prob = 0.0
+                if c_str and c_str not in [p[0] for p in parsed_opts]:
+                    parsed_opts.append((c_str, v_prob))
+            if parsed_opts:
+                parsed_sequence.append(parsed_opts)
+
+        if not parsed_sequence:
+            return []
+
         if not self.is_loaded:
-            # Fallback: Just return the first option for all characters
-            fallback = [opts[0] for opts in sequence_options if opts]
+            fallback = [opts[0][0] for opts in parsed_sequence]
             return [fallback]
-            
-        # Beam states: List of tuples (log_prob, path)
-        # Initialize with first character options
+
+        # Beam states: List of tuples (total_log_prob, path_list)
         beam = []
-        for char in sequence_options[0]:
-            beam.append((0.0, [char]))
-            
-        # Run Beam Search for t > 0
-        for t in range(1, len(sequence_options)):
-            current_options = sequence_options[t]
+        for char, v_prob in parsed_sequence[0]:
+            beam.append((v_prob, [char]))
+
+        # Run Beam Search across positions
+        for t in range(1, len(parsed_sequence)):
+            current_options = parsed_sequence[t]
             new_beam = []
             
-            # For every path currently in the beam...
             for prev_prob, prev_path in beam:
                 prev_char = prev_path[-1]
                 
-                # ...explore all possible next characters
-                for current_char in current_options:
+                for current_char, v_prob in current_options:
                     transition_prob = self.get_log_prob(prev_char, current_char)
-                    total_prob = prev_prob + transition_prob
+                    total_prob = prev_prob + transition_prob + (v_prob * 1.5)
                     
                     new_path = prev_path + [current_char]
                     new_beam.append((total_prob, new_path))
                     
-            # Sort all new paths by probability (descending) and keep the top_k
             new_beam.sort(key=lambda x: x[0], reverse=True)
-            beam = new_beam[:top_k]
+            beam = new_beam[:max(16, top_k * 2)]
             
-        # Return just the paths (strip the probabilities)
-        return [path for prob, path in beam]
+        # Deduplicate and return top_k paths
+        result_paths = []
+        seen = set()
+        for _, path in beam:
+            path_key = tuple(path)
+            if path_key not in seen:
+                seen.add(path_key)
+                result_paths.append(path)
+                if len(result_paths) >= top_k:
+                    break
+
+        return result_paths
 
     def viterbi_decode(self, sequence_options: List[List[str]]) -> List[str]:
         """

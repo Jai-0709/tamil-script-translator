@@ -440,6 +440,7 @@ async def translate(
         for i in indices:
             raw_cls = results[i].get("raw_chars", results[i]["modern_tamil"])
             cls_variations = [c.strip() for c in raw_cls.replace(' ', '').split(',') if c.strip()]
+            base_conf = float(results[i].get("confidence", 0.5))
             
             if results[i].get("is_memorized"):
                 mem_chars = results[i].get("memorized_options", [results[i]["modern_tamil"]])
@@ -449,18 +450,23 @@ async def translate(
                 ui_chars = cls_variations
                 nlp_chars = list(cls_variations)
             
-            # Automatically expand nlp_chars to include base <-> pulli counterparts
-            # so Beam Search can evaluate word context
-            expanded = []
-            for c in nlp_chars:
-                if c not in expanded: expanded.append(c)
-                if c in UNPULLI_MAP and UNPULLI_MAP[c] not in expanded:
-                    expanded.append(UNPULLI_MAP[c])
-                if c in PULLI_MAP and PULLI_MAP[c] not in expanded:
-                    expanded.append(PULLI_MAP[c])
+            # Automatically expand nlp_chars to include base <-> pulli counterparts with Vision scores
+            expanded_tuples = []
+            seen_c = set()
+            for rank_idx, c in enumerate(nlp_chars):
+                w_conf = max(0.05, base_conf * (0.95 ** rank_idx))
+                if c not in seen_c:
+                    seen_c.add(c)
+                    expanded_tuples.append((c, w_conf))
+                if c in UNPULLI_MAP and UNPULLI_MAP[c] not in seen_c:
+                    seen_c.add(UNPULLI_MAP[c])
+                    expanded_tuples.append((UNPULLI_MAP[c], w_conf * 0.90))
+                if c in PULLI_MAP and PULLI_MAP[c] not in seen_c:
+                    seen_c.add(PULLI_MAP[c])
+                    expanded_tuples.append((PULLI_MAP[c], w_conf * 0.90))
                     
-            sequence_options.append(expanded)
-            results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + expanded))
+            sequence_options.append(expanded_tuples)
+            results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + [t[0] for t in expanded_tuples]))
             
         # We ask for the top 8 most mathematically probable full-sentence interpretations.
         top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=8)

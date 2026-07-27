@@ -1041,8 +1041,26 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     if surviving_regions:
         regions = surviving_regions
 
-    # -- STEP 11: Sort by line then x -----------------------------------------
+    # -- STEP 11: Sort by line then x + Trim adjacent box overlap boundary ──────
     regions.sort(key=lambda r: (r["line"], r["x"]))
+    
+    # Trim minor horizontal overlaps between adjacent boxes on the same line to prevent stroke bleeding
+    for i in range(len(regions) - 1):
+        r1 = regions[i]
+        r2 = regions[i + 1]
+        if r1.get("line", 1) == r2.get("line", 1):
+            r1_right = r1["x"] + r1["w"]
+            r2_left = r2["x"]
+            if r1_right > r2_left:
+                overlap = r1_right - r2_left
+                min_w = min(r1["w"], r2["w"])
+                if overlap < int(min_w * 0.40):
+                    mid_x = (r1_right + r2_left) // 2
+                    r1["w"] = max(6, mid_x - r1["x"])
+                    r2_orig_right = r2["x"] + r2["w"]
+                    r2["x"] = mid_x
+                    r2["w"] = max(6, r2_orig_right - mid_x)
+
     for i, r in enumerate(regions):
         r["_id"] = i + 1
 
