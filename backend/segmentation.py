@@ -341,24 +341,38 @@ def _best_binary(gray: np.ndarray, img_type: str, img_w: int, img_h: int) -> np.
 #  Overlap removal
 # ---------------------------------------------
 
-def _remove_overlaps(regions: List[Dict], overlap_thresh: float = 0.45) -> List[Dict]:
-    """Remove smaller boxes largely covered by larger boxes."""
+def _remove_overlaps(regions: List[Dict], overlap_thresh: float = 0.75) -> List[Dict]:
+    """Remove duplicate boxes using true Intersection-over-Union (IoU), prioritizing character-sized boxes."""
+    if not regions:
+        return []
+    
+    # Sort regions by closeness to median character area so standard character boxes are evaluated first
+    areas = [r["w"] * r["h"] for r in regions]
+    median_area = float(np.median(areas)) if areas else 100.0
+    sorted_r = sorted(regions, key=lambda r: abs((r["w"] * r["h"]) - median_area))
+    
     keep: List[Dict] = []
-    sorted_r = sorted(regions, key=lambda r: r["w"] * r["h"], reverse=True)
     for r in sorted_r:
         rx1, ry1 = r["x"], r["y"]
         rx2, ry2 = rx1 + r["w"], ry1 + r["h"]
+        area_r = r["w"] * r["h"]
+        
         dominated = False
         for k in keep:
             kx1, ky1 = k["x"], k["y"]
             kx2, ky2 = kx1 + k["w"], ky1 + k["h"]
+            area_k = k["w"] * k["h"]
+            
             ix = max(0, min(rx2, kx2) - max(rx1, kx1))
             iy = max(0, min(ry2, ky2) - max(ry1, ky1))
             inter = ix * iy
-            smaller = min(r["w"] * r["h"], k["w"] * k["h"])
-            if smaller > 0 and inter / smaller > overlap_thresh:
-                dominated = True
-                break
+            
+            if inter > 0:
+                union = area_r + area_k - inter
+                iou = inter / union if union > 0 else 0.0
+                if iou > overlap_thresh:
+                    dominated = True
+                    break
         if not dominated:
             keep.append(r)
     return keep
@@ -706,9 +720,9 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
             if len(indices) > 0:
                 indices = indices.flatten()
                 
-                # ── Apply Containment / High Overlap Filter ──
+                # ── Apply Containment / High Overlap Filter (prioritizing high-confidence boxes) ──
                 boxes_with_scores = [(yolo_boxes[i], yolo_scores[i]) for i in indices]
-                boxes_with_scores.sort(key=lambda x: x[0][2] * x[0][3], reverse=True)
+                boxes_with_scores.sort(key=lambda x: x[1], reverse=True)
                 
                 final_yolo_boxes = []
                 for box, score in boxes_with_scores:

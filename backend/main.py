@@ -372,7 +372,7 @@ async def translate(
                 # Scan from newest to oldest to prioritize recent user corrections
                 for mem in reversed(correction_memory):
                     sim = cosine_similarity(features, mem["vector"])
-                    if sim > 0.90:
+                    if sim >= 0.86:
                         c_val = mem["modern_tamil"]
                         if c_val == "__IGNORE__":
                             results[i]["is_ignored"] = True
