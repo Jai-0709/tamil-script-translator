@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import axios from 'axios'
 import UploadZone from './components/UploadZone'
 import InscriptionCanvas from './components/InscriptionCanvas'
