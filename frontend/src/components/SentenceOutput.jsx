@@ -6,8 +6,9 @@ export default function SentenceOutput({
   alternativeSentences = [],
   alternativeRomanSentences = []
 }) {
-  const [copied, setCopied]       = useState(false)
-  const [showRoman, setShowRoman] = useState(false)
+  const [copied, setCopied]          = useState(false)
+  const [copiedAll, setCopiedAll]    = useState(false)
+  const [showRoman, setShowRoman]    = useState(false)
 
   const activeText = showRoman ? (romanSentence || fullSentence) : fullSentence
 
@@ -16,6 +17,19 @@ export default function SentenceOutput({
     navigator.clipboard.writeText(activeText).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  function copyAllAlternatives() {
+    if (!alternativeSentences.length) return
+    const textToCopy = alternativeSentences.slice(0, 10).map((alt, i) => {
+      const rom = alternativeRomanSentences[i] ? ` (${alternativeRomanSentences[i]})` : ''
+      return `Option #${i + 1}: ${alt}${rom}`
+    }).join('\n')
+
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopiedAll(true)
+      setTimeout(() => setCopiedAll(false), 2000)
     })
   }
 
@@ -160,6 +174,28 @@ export default function SentenceOutput({
             }}>
               Top Suitable Readings ({Math.min(alternativeSentences.length, 10)})
             </span>
+
+            {/* Copy All Button */}
+            <button
+              onClick={copyAllAlternatives}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 8px',
+                borderRadius: 4,
+                border: '1px solid var(--border)',
+                fontSize: 10,
+                fontWeight: 600,
+                cursor: 'pointer',
+                background: copiedAll ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                color: copiedAll ? '#4ade80' : 'var(--text-secondary)',
+                transition: 'all 0.15s ease',
+              }}
+              title="Copy all top alternative readings to clipboard"
+            >
+              {copiedAll ? '✓ Copied All!' : '📋 Copy All Readings'}
+            </button>
           </div>
 
           <div style={{
