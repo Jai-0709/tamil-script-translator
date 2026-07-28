@@ -408,8 +408,26 @@ export default function App() {
     for (const w of words) {
       const l = w.line || 1
       if (!lines[l]) lines[l] = []
-      const rawOpts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
-      const cleanOpts = Array.from(new Set(rawOpts.map(o => String(o).split(',')[0].trim())))
+      
+      let rawOpts = []
+      if (w.ambiguous_options && w.ambiguous_options.length) {
+        rawOpts.push(...w.ambiguous_options)
+      }
+      if (w.top3 && w.top3.length) {
+        rawOpts.push(...w.top3.map(t => t.modern_tamil))
+      }
+      if (w.modern_tamil) {
+        rawOpts.push(w.modern_tamil)
+      }
+
+      // Add base/pulli counterpart if applicable
+      const charVal = String(w.modern_tamil || '')
+      const baseChar = charVal.replace(/[\u0BCD]/g, '')
+      if (baseChar && baseChar !== charVal) {
+        rawOpts.push(baseChar)
+      }
+
+      const cleanOpts = Array.from(new Set(rawOpts.map(o => String(o).split(',')[0].trim()))).filter(o => o && o !== '?')
       lines[l].push(cleanOpts.slice(0, 3))
     }
 
@@ -419,7 +437,7 @@ export default function App() {
     function generatePermutations(lineIdx, wordIdx, currentPath) {
       if (combinations.length >= 10) return
       if (lineIdx >= sortedLines.length) {
-        const sentence = currentPath.join('  ')
+        const sentence = currentPath.join('')
         if (!combinations.includes(sentence)) combinations.push(sentence)
         return
       }
@@ -440,8 +458,9 @@ export default function App() {
     // Seamlessly merge backend-provided alternative_sentences if matching active word count
     if (apiResponse?.alternative_sentences?.length) {
       for (const bAlt of apiResponse.alternative_sentences) {
-        if (!combinations.includes(bAlt) && combinations.length < 10) {
-          combinations.push(bAlt)
+        const cleanBAlt = bAlt.replace(/\s+/g, '')
+        if (!combinations.includes(cleanBAlt) && combinations.length < 10) {
+          combinations.push(cleanBAlt)
         }
       }
     }
