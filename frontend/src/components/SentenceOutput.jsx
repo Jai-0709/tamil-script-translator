@@ -122,17 +122,21 @@ export default function SentenceOutput({
         background: '#090a10',
         borderRadius: 8,
         border: '1px solid var(--border)',
-        padding: '12px 14px',
-        maxHeight: 110,
+      <div style={{
+        background: '#090a10',
+        borderRadius: 8,
+        border: '1px solid var(--border)',
+        padding: '10px 14px',
+        maxHeight: 90,
         overflowY: 'auto',
       }}>
         <p
           className={showRoman ? '' : 'tamil-text'}
           style={{
-            fontSize: showRoman ? 15 : 22,
+            fontSize: showRoman ? 14 : 20,
             fontWeight: 700,
             color: 'var(--text-primary)',
-            lineHeight: 1.5,
+            lineHeight: 1.4,
             wordBreak: 'break-word',
             fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
           }}
@@ -145,7 +149,7 @@ export default function SentenceOutput({
         </p>
       </div>
 
-      {/* Alternative Readings Grid */}
+      {/* Alternative Readings Grid (Top 10 Combinations) */}
       {alternativeSentences.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
           <div style={{
@@ -158,7 +162,7 @@ export default function SentenceOutput({
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
             }}>
-              Alternative Readings ({Math.min(alternativeSentences.length, 6)})
+              Top Suitable Readings ({Math.min(alternativeSentences.length, 10)})
             </span>
           </div>
 
@@ -166,11 +170,11 @@ export default function SentenceOutput({
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
             gap: 6,
-            maxHeight: 140,
+            maxHeight: 180,
             overflowY: 'auto',
             paddingRight: 2,
           }}>
-            {alternativeSentences.slice(0, 6).map((altText, idx) => {
+            {alternativeSentences.slice(0, 10).map((altText, idx) => {
               const romanText = alternativeRomanSentences[idx] || ''
               return (
                 <div
@@ -207,7 +211,7 @@ export default function SentenceOutput({
                     <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>📋 Copy</span>
                   </div>
 
-                  <div className="tamil-text" style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
+                  <div className="tamil-text" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
                     {altText}
                   </div>
 

@@ -348,12 +348,23 @@ export default function App() {
     }
   }
 
-  // Build effective word list (with corrections applied)
+  // Build effective word list (with corrections applied & sorted left-to-right by line and x)
   const rawWords  = apiResponse?.words ?? []
-  const words = rawWords.map(w => ({
-    ...w,
-    modern_tamil: corrections[w.id] ?? w.modern_tamil,
-  }))
+  const sortedWords = useMemo(() => {
+    return [...rawWords].sort((a, b) => {
+      const lineA = a.line || 1
+      const lineB = b.line || 1
+      if (lineA !== lineB) return lineA - lineB
+      return a.x - b.x
+    })
+  }, [rawWords])
+
+  const words = useMemo(() => {
+    return sortedWords.map(w => ({
+      ...w,
+      modern_tamil: corrections[w.id] ?? w.modern_tamil,
+    }))
+  }, [sortedWords, corrections])
 
   // Build effective full sentence (with corrections)
   function buildSentence(ws) {
@@ -364,6 +375,47 @@ export default function App() {
   }
   const hasUserCorrections = Object.keys(corrections).length > 0
   const effectiveSentence = hasUserCorrections ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
+
+  // Dynamically calculate Top 10 suitable alternative sentence readings for live canvas edits
+  const effectiveAlternatives = useMemo(() => {
+    if (!words.length) return []
+    if (!hasUserCorrections && apiResponse?.alternative_sentences?.length) {
+      return apiResponse.alternative_sentences.slice(0, 10)
+    }
+
+    const lines = {}
+    for (const w of words) {
+      const l = w.line || 1
+      if (!lines[l]) lines[l] = []
+      const opts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
+      lines[l].push(opts.slice(0, 3))
+    }
+
+    const sortedLines = Object.keys(lines).sort((a, b) => a - b)
+    const combinations = []
+
+    function generatePermutations(lineIdx, wordIdx, currentPath) {
+      if (combinations.length >= 10) return
+      if (lineIdx >= sortedLines.length) {
+        const sentence = currentPath.join('  ')
+        if (!combinations.includes(sentence)) combinations.push(sentence)
+        return
+      }
+      const lineNum = sortedLines[lineIdx]
+      const lineWords = lines[lineNum]
+      if (wordIdx >= lineWords.length) {
+        generatePermutations(lineIdx + 1, 0, currentPath)
+        return
+      }
+      for (const charOpt of lineWords[wordIdx]) {
+        generatePermutations(lineIdx, wordIdx + 1, [...currentPath, charOpt])
+        if (combinations.length >= 10) break
+      }
+    }
+
+    generatePermutations(0, 0, [])
+    return combinations.slice(0, 10)
+  }, [words, hasUserCorrections, apiResponse])
 
   const hasResult = apiResponse !== null
 
@@ -819,7 +871,7 @@ export default function App() {
             <SentenceOutput
               fullSentence={effectiveSentence}
               romanSentence={apiResponse?.roman_sentence || ""}
-              alternativeSentences={apiResponse?.alternative_sentences || []}
+              alternativeSentences={effectiveAlternatives}
               alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
               wordCount={apiResponse?.word_count || 0}
               lineCount={apiResponse?.line_count || 0}

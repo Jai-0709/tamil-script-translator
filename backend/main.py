@@ -473,8 +473,8 @@ async def translate(
             sequence_options.append(expanded_tuples)
             results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + [t[0] for t in expanded_tuples]))
             
-        # Beam search decoding
-        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=6)
+        # Beam search decoding for top 10 mathematical sentence combinations
+        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=10)
         
         best_path = top_k_paths[0] if top_k_paths else []
         for seq_idx, i in enumerate(indices):
