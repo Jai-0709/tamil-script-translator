@@ -366,20 +366,24 @@ export default function App() {
     }))
   }, [sortedWords, corrections])
 
-  // Build effective full sentence (with corrections)
+  // Build effective full sentence (with corrections or custom layout)
   function buildSentence(ws) {
     if (!ws.length) return ''
     const lines = {}
     for (const w of ws) lines[w.line] = [...(lines[w.line] || []), w.modern_tamil]
     return Object.keys(lines).sort((a,b)=>a-b).map(l => lines[l].join('')).join('  ')
   }
-  const hasUserCorrections = Object.keys(corrections).length > 0
-  const effectiveSentence = hasUserCorrections ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
 
-  // Dynamically calculate Top 10 suitable alternative sentence readings for live canvas edits
+  const initialWordCount = apiResponse?.words?.length ?? 0
+  const hasUserCorrections = Object.keys(corrections).length > 0
+  const isCustomWordLayout = words.length !== initialWordCount || hasUserCorrections
+
+  const effectiveSentence = isCustomWordLayout ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
+
+  // Dynamically calculate Top 10 suitable alternative sentence readings for ALL live canvas edits
   const effectiveAlternatives = useMemo(() => {
     if (!words.length) return []
-    if (!hasUserCorrections && apiResponse?.alternative_sentences?.length) {
+    if (!isCustomWordLayout && apiResponse?.alternative_sentences?.length) {
       return apiResponse.alternative_sentences.slice(0, 10)
     }
 
@@ -415,7 +419,7 @@ export default function App() {
 
     generatePermutations(0, 0, [])
     return combinations.slice(0, 10)
-  }, [words, hasUserCorrections, apiResponse])
+  }, [words, isCustomWordLayout, apiResponse])
 
   const hasResult = apiResponse !== null
 
