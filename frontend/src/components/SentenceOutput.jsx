@@ -122,10 +122,6 @@ export default function SentenceOutput({
         background: '#090a10',
         borderRadius: 8,
         border: '1px solid var(--border)',
-      <div style={{
-        background: '#090a10',
-        borderRadius: 8,
-        border: '1px solid var(--border)',
         padding: '10px 14px',
         maxHeight: 90,
         overflowY: 'auto',
