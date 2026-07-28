@@ -111,7 +111,10 @@ export default function App() {
       const { data } = await axios.post(`${BACKEND_URL}/translate`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setApiResponse(data)
+      setApiResponse({
+        ...data,
+        words_initial_count: data.words?.length || 0
+      })
       setDisplayImageURL(finalDisplayURL)
       setRegionMode(false)
     } catch (err) {
@@ -439,8 +442,11 @@ export default function App() {
 
     generatePermutations(0, 0, [])
 
-    // Seamlessly unshift high-scoring backend Beam Search alternatives to the top
-    if (apiResponse?.alternative_sentences?.length) {
+    // Only unshift initial backend alternative_sentences if layout is untampered
+    const initialCount = apiResponse?.words_initial_count ?? 0
+    const isCustomLayout = (initialCount > 0 && words.length !== initialCount) || Object.keys(corrections).length > 0
+
+    if (!isCustomLayout && apiResponse?.alternative_sentences?.length) {
       for (const bAlt of apiResponse.alternative_sentences) {
         const cleanBAlt = bAlt.replace(/\s+/g, '')
         if (!combinations.includes(cleanBAlt)) {
@@ -450,7 +456,7 @@ export default function App() {
     }
 
     return combinations.slice(0, 10)
-  }, [words, apiResponse])
+  }, [words, apiResponse, corrections])
 
   const hasResult = apiResponse !== null
 
