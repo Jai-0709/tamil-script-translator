@@ -438,50 +438,53 @@ async def translate(
     for l, indices in lines.items():
         sequence_options = []
         for i in indices:
+            top3 = results[i].get("top3", [])
             raw_cls = results[i].get("raw_chars", results[i]["modern_tamil"])
-            cls_variations = [c.strip() for c in raw_cls.replace(' ', '').split(',') if c.strip()]
-            base_conf = float(results[i].get("confidence", 0.5))
+            top1_variations = [c.strip() for c in raw_cls.replace(' ', '').split(',') if c.strip()]
             
             if results[i].get("is_memorized"):
                 mem_chars = results[i].get("memorized_options", [results[i]["modern_tamil"]])
-                ui_chars = list(dict.fromkeys(mem_chars + cls_variations))
-                nlp_chars = list(mem_chars)
+                ui_chars = list(dict.fromkeys(mem_chars + top1_variations))
+                nlp_candidates = [(c, 0.95) for c in mem_chars]
             else:
-                ui_chars = cls_variations
-                nlp_chars = list(cls_variations)
-            
-            # Automatically expand nlp_chars to include base <-> pulli counterparts with Vision scores
+                ui_chars = top1_variations
+                nlp_candidates = []
+                for t in top3:
+                    conf = float(t.get("confidence", 0.5))
+                    t_chars = [c.strip() for c in str(t.get("raw_options", t.get("modern_tamil", ""))).split(',') if c.strip()]
+                    for c in t_chars:
+                        if c not in [p[0] for p in nlp_candidates]:
+                            nlp_candidates.append((c, conf))
+
+            # Expand with base <-> pulli counterparts
             expanded_tuples = []
             seen_c = set()
-            for rank_idx, c in enumerate(nlp_chars):
-                w_conf = max(0.05, base_conf * (0.95 ** rank_idx))
+            for c, conf in nlp_candidates:
                 if c not in seen_c:
                     seen_c.add(c)
-                    expanded_tuples.append((c, w_conf))
+                    expanded_tuples.append((c, conf))
                 if c in UNPULLI_MAP and UNPULLI_MAP[c] not in seen_c:
                     seen_c.add(UNPULLI_MAP[c])
-                    expanded_tuples.append((UNPULLI_MAP[c], w_conf * 1.0))
+                    expanded_tuples.append((UNPULLI_MAP[c], conf))
                 if c in PULLI_MAP and PULLI_MAP[c] not in seen_c:
                     seen_c.add(PULLI_MAP[c])
-                    expanded_tuples.append((PULLI_MAP[c], w_conf * 1.0))
-                    
+                    expanded_tuples.append((PULLI_MAP[c], conf))
+
             sequence_options.append(expanded_tuples)
             results[i]["ambiguous_options"] = list(dict.fromkeys(ui_chars + [t[0] for t in expanded_tuples]))
             
-        # We ask for the top 8 most mathematically probable full-sentence interpretations.
-        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=8)
+        # Beam search decoding
+        top_k_paths = nlp_engine.beam_search_decode(sequence_options, top_k=6)
         
         best_path = top_k_paths[0] if top_k_paths else []
         for seq_idx, i in enumerate(indices):
             if best_path and seq_idx < len(best_path):
-                # Update with the best mathematical Beam Search contextual character
                 results[i]["modern_tamil"] = best_path[seq_idx]
             else:
-                # Fallback to single top-1 predicted character (eliminate any raw commas)
                 raw_c = str(results[i]["modern_tamil"])
                 results[i]["modern_tamil"] = raw_c.split(',')[0].strip()
                 
-        # Store alternative paths for later
+        # Store clean alternative paths (filter out duplicate paths)
         for alt_path in top_k_paths[1:]:
             all_alt_paths.append((indices, alt_path))
 
