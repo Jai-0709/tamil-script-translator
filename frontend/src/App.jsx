@@ -409,24 +409,8 @@ export default function App() {
       const l = w.line || 1
       if (!lines[l]) lines[l] = []
       
-      let rawOpts = []
-      if (w.ambiguous_options && w.ambiguous_options.length) {
-        rawOpts.push(...w.ambiguous_options)
-      }
-      if (w.top3 && w.top3.length) {
-        rawOpts.push(...w.top3.map(t => t.modern_tamil))
-      }
-      if (w.modern_tamil) {
-        rawOpts.push(w.modern_tamil)
-      }
-
-      // Add base/pulli counterpart if applicable
-      const charVal = String(w.modern_tamil || '')
-      const baseChar = charVal.replace(/[\u0BCD]/g, '')
-      if (baseChar && baseChar !== charVal) {
-        rawOpts.push(baseChar)
-      }
-
+      // Use high-confidence shape options for this box
+      const rawOpts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
       const cleanOpts = Array.from(new Set(rawOpts.map(o => String(o).split(',')[0].trim()))).filter(o => o && o !== '?')
       lines[l].push(cleanOpts.slice(0, 3))
     }
@@ -455,12 +439,12 @@ export default function App() {
 
     generatePermutations(0, 0, [])
 
-    // Seamlessly merge backend-provided alternative_sentences if matching active word count
+    // Seamlessly unshift high-scoring backend Beam Search alternatives to the top
     if (apiResponse?.alternative_sentences?.length) {
       for (const bAlt of apiResponse.alternative_sentences) {
         const cleanBAlt = bAlt.replace(/\s+/g, '')
-        if (!combinations.includes(cleanBAlt) && combinations.length < 10) {
-          combinations.push(cleanBAlt)
+        if (!combinations.includes(cleanBAlt)) {
+          combinations.unshift(cleanBAlt)
         }
       }
     }
