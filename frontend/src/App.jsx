@@ -122,12 +122,42 @@ export default function App() {
     }
   }
 
+  // Helper to synchronize apiResponse.words and full_sentence dynamically
+  const updateApiResponseWords = useCallback((updatedWords, updatedCorrections = corrections) => {
+    const sorted = [...updatedWords].sort((a, b) => {
+      const lineA = a.line || 1
+      const lineB = b.line || 1
+      if (lineA !== lineB) return lineA - lineB
+      return a.x - b.x
+    })
+
+    const lines = {}
+    for (const w of sorted) {
+      const charVal = updatedCorrections[w.id] ?? w.modern_tamil
+      lines[w.line || 1] = [...(lines[w.line || 1] || []), charVal]
+    }
+    const newFullSentence = Object.keys(lines).sort((a, b) => a - b).map(l => lines[l].join('')).join('  ')
+
+    setApiResponse(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        words: sorted,
+        word_count: sorted.length,
+        full_sentence: newFullSentence
+      }
+    })
+  }, [corrections])
+
   // Feature 2 — apply a correction
   const handleCorrect = useCallback((wordId, newChar) => {
     // 1. Update UI state instantly
     setCorrections(prev => {
       const next = { ...prev, [wordId]: newChar }
       saveCorrections(next)
+      if (apiResponse?.words) {
+        updateApiResponseWords(apiResponse.words, next)
+      }
       return next
     })
 
@@ -145,7 +175,7 @@ export default function App() {
         }).catch(err => console.error("Failed to memorize:", err))
       }
     }
-  }, [apiResponse])
+  }, [apiResponse, updateApiResponseWords])
 
   // Reset/forget vector memory for a character
   const handleForgetMemory = useCallback((wordId) => {
@@ -174,11 +204,7 @@ export default function App() {
     const word = apiResponse.words.find(w => w.id === wordId)
     const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
 
-    setApiResponse(prev => ({
-      ...prev,
-      words: updatedWords,
-      word_count: updatedWords.length,
-    }))
+    updateApiResponseWords(updatedWords)
     showToast(`Removed Box #${wordId}`)
 
     // Store in backend vector memory as __IGNORE__ so future uploads auto-suppress this box!
@@ -192,7 +218,7 @@ export default function App() {
         })
       }).catch(err => console.error("Failed to memorize ignored box:", err))
     }
-  }, [apiResponse])
+  }, [apiResponse, updateApiResponseWords])
 
   // Feature 4 — Manually draw & add a new box for unsegmented characters
   const [isAddingBox, setIsAddingBox] = useState(false)
@@ -240,19 +266,15 @@ export default function App() {
           is_unknown: false
         }
         
-        const updatedWords = [...apiResponse.words, newWord].sort((a, b) => a.x - b.x)
-        setApiResponse(prev => ({
-          ...prev,
-          words: updatedWords,
-          word_count: updatedWords.length
-        }))
+        const updatedWords = [...apiResponse.words, newWord]
+        updateApiResponseWords(updatedWords)
         showToast(`Added Box #${newWord.id} (${newWord.modern_tamil})`)
       }
     } catch (err) {
       console.error("Failed to classify custom crop:", err)
       showToast("Error adding manual box", false)
     }
-  }, [apiResponse, imageFile, displayImageURL, imageURL])
+  }, [apiResponse, imageFile, displayImageURL, imageURL, updateApiResponseWords])
 
   // Save final segmentation layout and memory to disk
   const handleSaveFinalSegmentation = useCallback(async () => {
