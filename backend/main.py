@@ -633,7 +633,8 @@ async def classify_crop(
     return {
         "modern_tamil": res["modern_tamil"],
         "confidence": float(res["confidence"]),
-        "top3": res.get("top3", [])
+        "top3": res.get("top3", []),
+        "ambiguous_options": res.get("ambiguous_options", [res["modern_tamil"]])
     }
 
 

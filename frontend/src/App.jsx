@@ -262,6 +262,8 @@ export default function App() {
           h: Math.round(newBox.h),
           modern_tamil: data.modern_tamil || '?',
           confidence: data.confidence || 0.85,
+          ambiguous_options: data.ambiguous_options || [data.modern_tamil || '?'],
+          top3: data.top3 || [],
           line: 1,
           is_unknown: false
         }
@@ -396,25 +398,19 @@ export default function App() {
     return Object.keys(lines).sort((a,b)=>a-b).map(l => lines[l].join('')).join('  ')
   }
 
-  const initialWordCount = apiResponse?.words?.length ?? 0
-  const hasUserCorrections = Object.keys(corrections).length > 0
-  const isCustomWordLayout = words.length !== initialWordCount || hasUserCorrections
+  const effectiveSentence = apiResponse?.full_sentence || buildSentence(words)
 
-  const effectiveSentence = isCustomWordLayout ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
-
-  // Dynamically calculate Top 10 suitable alternative sentence readings for ALL live canvas edits
+  // Dynamically calculate Top 10 suitable alternative sentence readings across active character sequence
   const effectiveAlternatives = useMemo(() => {
     if (!words.length) return []
-    if (!isCustomWordLayout && apiResponse?.alternative_sentences?.length) {
-      return apiResponse.alternative_sentences.slice(0, 10)
-    }
 
     const lines = {}
     for (const w of words) {
       const l = w.line || 1
       if (!lines[l]) lines[l] = []
-      const opts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
-      lines[l].push(opts.slice(0, 3))
+      const rawOpts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
+      const cleanOpts = Array.from(new Set(rawOpts.map(o => String(o).split(',')[0].trim())))
+      lines[l].push(cleanOpts.slice(0, 3))
     }
 
     const sortedLines = Object.keys(lines).sort((a, b) => a - b)
@@ -440,8 +436,18 @@ export default function App() {
     }
 
     generatePermutations(0, 0, [])
+
+    // Seamlessly merge backend-provided alternative_sentences if matching active word count
+    if (apiResponse?.alternative_sentences?.length) {
+      for (const bAlt of apiResponse.alternative_sentences) {
+        if (!combinations.includes(bAlt) && combinations.length < 10) {
+          combinations.push(bAlt)
+        }
+      }
+    }
+
     return combinations.slice(0, 10)
-  }, [words, isCustomWordLayout, apiResponse])
+  }, [words, apiResponse])
 
   const hasResult = apiResponse !== null
 
