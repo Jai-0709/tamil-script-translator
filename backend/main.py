@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from segmentation import segment_words
 import classifier
 from nlp_engine import nlp_engine
+from gemini_engine import gemini_epigraphic_refine
 
 # ── Aksharamukha transliteration (optional — graceful fallback if missing) ──
 try:
@@ -552,6 +553,18 @@ async def translate(
             alternative_sentences.append(alt_sentence)
             alternative_roman_sentences.append(_to_roman(alt_sentence))
             
+    # ── 5. Optional Gemini API Free Tier Refinement ───────────────────────
+    raw_char_seq = [w.modern_tamil for w in words if w.modern_tamil and w.modern_tamil != "?"]
+    gemini_res = gemini_epigraphic_refine(raw_char_seq)
+    if gemini_res and "full_sentence" in gemini_res and gemini_res["full_sentence"]:
+        sentence = gemini_res["full_sentence"]
+        roman_sentence = _to_roman(sentence)
+        if "alternative_readings" in gemini_res and isinstance(gemini_res["alternative_readings"], list):
+            gemini_alts = [s.strip() for s in gemini_res["alternative_readings"] if s and s.strip()]
+            if gemini_alts:
+                alternative_sentences = gemini_alts[:10]
+                alternative_roman_sentences = [_to_roman(s) for s in alternative_sentences]
+            
     return TranslateResponse(
         words          = words,
         full_sentence  = sentence,
@@ -633,8 +646,7 @@ async def classify_crop(
     return {
         "modern_tamil": res["modern_tamil"],
         "confidence": float(res["confidence"]),
-        "top3": res.get("top3", []),
-        "ambiguous_options": res.get("ambiguous_options", [res["modern_tamil"]])
+        "top3": res.get("top3", [])
     }
 
 

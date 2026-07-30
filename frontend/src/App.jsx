@@ -111,10 +111,7 @@ export default function App() {
       const { data } = await axios.post(`${BACKEND_URL}/translate`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setApiResponse({
-        ...data,
-        words_initial_count: data.words?.length || 0
-      })
+      setApiResponse(data)
       setDisplayImageURL(finalDisplayURL)
       setRegionMode(false)
     } catch (err) {
@@ -125,42 +122,12 @@ export default function App() {
     }
   }
 
-  // Helper to synchronize apiResponse.words and full_sentence dynamically
-  const updateApiResponseWords = useCallback((updatedWords, updatedCorrections = corrections) => {
-    const sorted = [...updatedWords].sort((a, b) => {
-      const lineA = a.line || 1
-      const lineB = b.line || 1
-      if (lineA !== lineB) return lineA - lineB
-      return a.x - b.x
-    })
-
-    const lines = {}
-    for (const w of sorted) {
-      const charVal = updatedCorrections[w.id] ?? w.modern_tamil
-      lines[w.line || 1] = [...(lines[w.line || 1] || []), charVal]
-    }
-    const newFullSentence = Object.keys(lines).sort((a, b) => a - b).map(l => lines[l].join('')).join('  ')
-
-    setApiResponse(prev => {
-      if (!prev) return prev
-      return {
-        ...prev,
-        words: sorted,
-        word_count: sorted.length,
-        full_sentence: newFullSentence
-      }
-    })
-  }, [corrections])
-
   // Feature 2 — apply a correction
   const handleCorrect = useCallback((wordId, newChar) => {
     // 1. Update UI state instantly
     setCorrections(prev => {
       const next = { ...prev, [wordId]: newChar }
       saveCorrections(next)
-      if (apiResponse?.words) {
-        updateApiResponseWords(apiResponse.words, next)
-      }
       return next
     })
 
@@ -178,7 +145,7 @@ export default function App() {
         }).catch(err => console.error("Failed to memorize:", err))
       }
     }
-  }, [apiResponse, updateApiResponseWords])
+  }, [apiResponse])
 
   // Reset/forget vector memory for a character
   const handleForgetMemory = useCallback((wordId) => {
@@ -207,7 +174,11 @@ export default function App() {
     const word = apiResponse.words.find(w => w.id === wordId)
     const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
 
-    updateApiResponseWords(updatedWords)
+    setApiResponse(prev => ({
+      ...prev,
+      words: updatedWords,
+      word_count: updatedWords.length,
+    }))
     showToast(`Removed Box #${wordId}`)
 
     // Store in backend vector memory as __IGNORE__ so future uploads auto-suppress this box!
@@ -221,7 +192,7 @@ export default function App() {
         })
       }).catch(err => console.error("Failed to memorize ignored box:", err))
     }
-  }, [apiResponse, updateApiResponseWords])
+  }, [apiResponse])
 
   // Feature 4 — Manually draw & add a new box for unsegmented characters
   const [isAddingBox, setIsAddingBox] = useState(false)
@@ -265,21 +236,23 @@ export default function App() {
           h: Math.round(newBox.h),
           modern_tamil: data.modern_tamil || '?',
           confidence: data.confidence || 0.85,
-          ambiguous_options: data.ambiguous_options || [data.modern_tamil || '?'],
-          top3: data.top3 || [],
           line: 1,
           is_unknown: false
         }
         
-        const updatedWords = [...apiResponse.words, newWord]
-        updateApiResponseWords(updatedWords)
+        const updatedWords = [...apiResponse.words, newWord].sort((a, b) => a.x - b.x)
+        setApiResponse(prev => ({
+          ...prev,
+          words: updatedWords,
+          word_count: updatedWords.length
+        }))
         showToast(`Added Box #${newWord.id} (${newWord.modern_tamil})`)
       }
     } catch (err) {
       console.error("Failed to classify custom crop:", err)
       showToast("Error adding manual box", false)
     }
-  }, [apiResponse, imageFile, displayImageURL, imageURL, updateApiResponseWords])
+  }, [apiResponse, imageFile, displayImageURL, imageURL])
 
   // Save final segmentation layout and memory to disk
   const handleSaveFinalSegmentation = useCallback(async () => {
@@ -393,29 +366,29 @@ export default function App() {
     }))
   }, [sortedWords, corrections])
 
-  // Build effective full sentence (with corrections or custom layout)
+  // Build effective full sentence (with corrections)
   function buildSentence(ws) {
     if (!ws.length) return ''
     const lines = {}
     for (const w of ws) lines[w.line] = [...(lines[w.line] || []), w.modern_tamil]
     return Object.keys(lines).sort((a,b)=>a-b).map(l => lines[l].join('')).join('  ')
   }
+  const hasUserCorrections = Object.keys(corrections).length > 0
+  const effectiveSentence = hasUserCorrections ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
 
-  const effectiveSentence = apiResponse?.full_sentence || buildSentence(words)
-
-  // Dynamically calculate Top 10 suitable alternative sentence readings across active character sequence
+  // Dynamically calculate Top 10 suitable alternative sentence readings for live canvas edits
   const effectiveAlternatives = useMemo(() => {
     if (!words.length) return []
+    if (!hasUserCorrections && apiResponse?.alternative_sentences?.length) {
+      return apiResponse.alternative_sentences.slice(0, 10)
+    }
 
     const lines = {}
     for (const w of words) {
       const l = w.line || 1
       if (!lines[l]) lines[l] = []
-      
-      // Use high-confidence shape options for this box
-      const rawOpts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
-      const cleanOpts = Array.from(new Set(rawOpts.map(o => String(o).split(',')[0].trim()))).filter(o => o && o !== '?')
-      lines[l].push(cleanOpts.slice(0, 3))
+      const opts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
+      lines[l].push(opts.slice(0, 3))
     }
 
     const sortedLines = Object.keys(lines).sort((a, b) => a - b)
@@ -424,7 +397,7 @@ export default function App() {
     function generatePermutations(lineIdx, wordIdx, currentPath) {
       if (combinations.length >= 10) return
       if (lineIdx >= sortedLines.length) {
-        const sentence = currentPath.join('')
+        const sentence = currentPath.join('  ')
         if (!combinations.includes(sentence)) combinations.push(sentence)
         return
       }
@@ -441,22 +414,8 @@ export default function App() {
     }
 
     generatePermutations(0, 0, [])
-
-    // Only unshift initial backend alternative_sentences if layout is untampered
-    const initialCount = apiResponse?.words_initial_count ?? 0
-    const isCustomLayout = (initialCount > 0 && words.length !== initialCount) || Object.keys(corrections).length > 0
-
-    if (!isCustomLayout && apiResponse?.alternative_sentences?.length) {
-      for (const bAlt of apiResponse.alternative_sentences) {
-        const cleanBAlt = bAlt.replace(/\s+/g, '')
-        if (!combinations.includes(cleanBAlt)) {
-          combinations.unshift(cleanBAlt)
-        }
-      }
-    }
-
     return combinations.slice(0, 10)
-  }, [words, apiResponse, corrections])
+  }, [words, hasUserCorrections, apiResponse])
 
   const hasResult = apiResponse !== null
 
