@@ -108,8 +108,20 @@ export default function App() {
     setError(null)
     try {
       showToast(`Loading ${sample.title}...`)
-      const res = await fetch(sample.image)
-      const blob = await res.blob()
+      let dataURI = ''
+      if (typeof sample.getStoneDataURI === 'function') {
+        dataURI = sample.getStoneDataURI()
+      }
+      
+      let blob
+      if (dataURI) {
+        const res = await fetch(dataURI)
+        blob = await res.blob()
+      } else {
+        const res = await fetch(sample.image)
+        blob = await res.blob()
+      }
+
       const file = new File([blob], `${sample.id}.jpg`, { type: 'image/jpeg' })
       handleFileSelect(file)
 
@@ -122,7 +134,7 @@ export default function App() {
       showToast(`Decoded ${sample.title}!`)
     } catch (err) {
       console.error("Failed to auto-translate preset sample:", err)
-      showToast("Error processing sample image", false)
+      showToast("Error processing sample image — check backend server", false)
     } finally {
       setIsLoading(false)
     }

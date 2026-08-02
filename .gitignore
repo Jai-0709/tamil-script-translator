@@ -3,11 +3,6 @@ backend/__pycache__/
 *.pyc
 venv/
 .env
-frontend/node_modules/
-backend/__pycache__/
-*.pyc
-venv/
-.env
 !.env.production
 debug/
 TAMIL SCRIPT DATASET/
@@ -22,6 +17,6 @@ models/*.pth
 
 # Datasets
 CLEANED DATA SET/
-dataset/
-data/
+/dataset/
+/data/
 yolo_dataset/
