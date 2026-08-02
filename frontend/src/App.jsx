@@ -53,8 +53,8 @@ export default function App() {
   // Feature 4 — Smart Hybrid YOLO Segmentation Toggle
   const [segmentMode, setSegmentMode]     = useState('smart') // 'smart' or 'classic'
 
-  // Feature 5 — Merge Distance
-  const [mergeGap, setMergeGap]           = useState(0)
+  // Feature 5 — Merge Distance (Permanently 0px)
+  const mergeGap                          = 0
 
   // Navigation
   const [activePage, setActivePage]       = useState('translator')  // 'translator' | 'dataset'
@@ -606,73 +606,7 @@ export default function App() {
           </button>
         )}
 
-        {/* ── Feature 5: Redesigned Easy-Access Merge Gap Control ── */}
-        {imageURL && segmentMode === 'smart' && (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            padding: '4px 10px',
-            background: 'var(--bg-card-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
-              Merge Gap
-            </span>
 
-            {/* Stepper − button */}
-            <button
-              onClick={() => setMergeGap(m => Math.max(0, m - 1))}
-              disabled={mergeGap <= 0}
-              style={{
-                width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)',
-                background: mergeGap <= 0 ? 'transparent' : 'rgba(255,255,255,0.06)',
-                color: mergeGap <= 0 ? 'var(--text-muted)' : 'var(--text-primary)',
-                fontSize: 14, fontWeight: 700, cursor: mergeGap <= 0 ? 'default' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                lineHeight: 1,
-              }}
-              title="Decrease merge gap"
-            >−</button>
-
-            {/* Smooth range slider */}
-            <input
-              type="range" min={0} max={20} step={1}
-              value={mergeGap}
-              onChange={e => setMergeGap(Number(e.target.value))}
-              style={{
-                width: 80, height: 4, accentColor: '#f97316', cursor: 'pointer',
-                borderRadius: 2, background: 'rgba(255,255,255,0.1)'
-              }}
-              title="Adjust maximum stroke merging distance"
-            />
-
-            {/* Stepper + button */}
-            <button
-              onClick={() => setMergeGap(m => Math.min(20, m + 1))}
-              disabled={mergeGap >= 20}
-              style={{
-                width: 24, height: 24, borderRadius: 5, border: '1px solid var(--border)',
-                background: mergeGap >= 20 ? 'transparent' : 'rgba(255,255,255,0.06)',
-                color: mergeGap >= 20 ? 'var(--text-muted)' : 'var(--text-primary)',
-                fontSize: 14, fontWeight: 700, cursor: mergeGap >= 20 ? 'default' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                lineHeight: 1,
-              }}
-              title="Increase merge gap"
-            >+</button>
-
-            {/* Digital Badge */}
-            <span style={{
-              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-              background: mergeGap > 0 ? 'rgba(249,115,22,0.15)' : 'rgba(255,255,255,0.05)',
-              color: mergeGap > 0 ? '#f97316' : 'var(--text-secondary)',
-              border: `1px solid ${mergeGap > 0 ? 'rgba(249,115,22,0.3)' : 'var(--border)'}`,
-              minWidth: 36, textAlign: 'center',
-            }}>
-              {mergeGap}px
-            </span>
-          </div>
-        )}
 
         {/* Send to Dataset */}
         {hasResult && Object.keys(corrections).length > 0 && (
