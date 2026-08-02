@@ -84,25 +84,44 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
         }
     }
 
-    try:
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        print(f"[GEMINI] Sending epigraphic prompt to {model_name} (Free Tier)...")
-        with urllib.request.urlopen(req, timeout=12) as response:
-            res_data = json.loads(response.read().decode("utf-8"))
+    models_to_try = [
+        os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip(),
+        "gemini-1.5-flash",
+        "gemini-1.5-pro"
+    ]
+    models_to_try = list(dict.fromkeys(models_to_try))
 
-        candidates = res_data.get("candidates", [])
-        if not candidates:
-            return None
+    for model_name in models_to_try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+        try:
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            print(f"[GEMINI] Sending epigraphic prompt to {model_name} (Free Tier)...")
+            with urllib.request.urlopen(req, timeout=12) as response:
+                res_data = json.loads(response.read().decode("utf-8"))
 
-        text_content = candidates[0]["content"]["parts"][0]["text"]
-        result = json.loads(text_content)
-        print(f"[GEMINI] Successfully received epigraphic refinement: {result.get('full_sentence')}")
-        return result
-    except Exception as e:
-        print(f"[GEMINI WARN] Gemini API call failed: {e}. Falling back to local NLP engine.")
-        return None
+            candidates = res_data.get("candidates", [])
+            if not candidates:
+                continue
+
+            text_content = candidates[0]["content"]["parts"][0]["text"]
+            result = json.loads(text_content)
+            print(f"[GEMINI] Successfully received epigraphic refinement from {model_name}: {result.get('full_sentence')}")
+            return result
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                print(f"[GEMINI WARN] Rate limit 429 on {model_name}. Retrying with fallback model...")
+                continue
+            else:
+                print(f"[GEMINI WARN] HTTP {e.code} on {model_name}: {e.reason}")
+                break
+        except Exception as e:
+            print(f"[GEMINI WARN] {model_name} call error: {e}")
+            break
+
+    print("[GEMINI WARN] Gemini API unavailable or rate-limited. Falling back to local NLP engine.")
+    return None
