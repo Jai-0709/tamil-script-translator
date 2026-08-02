@@ -35,13 +35,13 @@ def is_gemini_enabled() -> bool:
     return len(get_gemini_api_key()) > 5
 
 
-def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
+def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional[List[str]] = None) -> Optional[Dict]:
     """
     Calls Google Gemini API (Free Tier) to perform state-of-the-art word segmentation (சொற்பிரிப்பு),
-    punctuation restoration, and ancient Tamil epigraphic translation.
+    punctuation restoration, ancient Tamil epigraphic translation, and word-by-word meaning breakdown.
 
     Returns:
-        Dict with keys: full_sentence, alternative_readings, meaning
+        Dict with keys: full_sentence, word_breakdown, alternative_readings, meaning
         Or None if Gemini is disabled/failed.
     """
     key = get_gemini_api_key()
@@ -59,26 +59,36 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
                     os.environ["GEMINI_MODEL"] = line.split("=", 1)[1].strip()
 
     model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
 
     raw_text = "".join(raw_characters).strip()
     if not raw_text:
         return None
 
+    variations_str = ""
+    if top_variations and len(top_variations) > 0:
+        variations_str = "\nTop NLP Beam Search Variations:\n" + "\n".join([f"- {v}" for v in top_variations[:50]])
+
     system_prompt = (
         "You are an expert Ancient Tamil Epigraphist and Epigraphic Linguistics AI.\n"
         "Your task is to take a raw sequence of ancient Tamil characters extracted from stone inscriptions (கல்வெட்டுகள்), "
-        "perform accurate word segmentation (சொற்பிரிப்பு), restore missing pulli dots and ligatures, "
-        "and translate ancient orthography into clean modern Tamil text.\n\n"
+        "analyze the candidate NLP variations, perform accurate word segmentation (சொற்பிரிப்பு), restore missing pulli dots and ligatures, "
+        "and provide word-by-word Tamil & English meanings.\n\n"
         "Return output strictly as a JSON object matching this schema:\n"
         "{\n"
         '  "full_sentence": "clean, word-segmented modern Tamil text with proper spaces between words",\n'
+        '  "word_breakdown": [\n'
+        '    {\n'
+        '      "word": "each separated modern Tamil word",\n'
+        '      "type": "grammatical classification or title (e.g., Proper Noun / Honorific Title)",\n'
+        '      "meaning": "Tamil & English meaning of the separated word"\n'
+        '    }\n'
+        '  ],\n'
         '  "alternative_readings": ["top 10 grammatically valid epigraphic readings"],\n'
-        '  "meaning": "simple modern Tamil meaning of the inscription"\n'
+        '  "meaning": "overall simple modern Tamil meaning of the full inscription"\n'
         "}\n"
     )
 
-    user_prompt = f'Raw Inscription Characters: "{raw_text}"\nProvide the word-segmented modern Tamil reading and top 10 alternative readings in strict JSON.'
+    user_prompt = f'Raw Inscription Characters: "{raw_text}"{variations_str}\nProvide the word-segmented modern Tamil reading, word-by-word meanings, and top 10 alternative readings in strict JSON.'
 
     payload = {
         "contents": [

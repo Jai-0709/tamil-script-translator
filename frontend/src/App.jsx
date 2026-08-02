@@ -39,6 +39,12 @@ export default function App() {
   const [corrections, setCorrections]     = useState({})   // {[wordId]: newChar}
   const [popover, setPopover]             = useState(null) // {word, x, y}
 
+  // AI Refinement State
+  const [isRefiningAI, setIsRefiningAI]   = useState(false)
+  const [aiRefinedState, setAiRefinedState] = useState(null)
+  const [aiMeaningState, setAiMeaningState] = useState(null)
+  const [aiWordBreakdownState, setAiWordBreakdownState] = useState([])
+
   // Feature 3 — Region selector
   const [regionMode, setRegionMode]       = useState(false)
   const [selectedRegion, setSelectedRegion] = useState(null)
@@ -73,12 +79,43 @@ export default function App() {
     setSelectedRegion(null)
     setRegionMode(false)
 
+    setAiRefinedState(null)
+    setAiMeaningState(null)
+    setAiWordBreakdownState([])
+
     // Read natural dimensions
     const img = new Image()
     img.onload = () => {
       imageNaturalRef.current = { w: img.naturalWidth, h: img.naturalHeight }
     }
     img.src = url
+  }
+
+  async function handleRefineAI() {
+    if (!words || words.length === 0) return
+    setIsRefiningAI(true)
+    try {
+      const rawChars = words.map(w => corrections[w.id] || w.modern_tamil).filter(c => c && c !== '?')
+      const res = await fetch('http://localhost:8000/refine-ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          raw_characters: rawChars,
+          alternative_sentences: effectiveAlternatives
+        })
+      })
+      if (!res.ok) throw new Error('AI Refinement failed')
+      const data = await res.json()
+      setAiRefinedState(data.ai_refined_sentence)
+      setAiMeaningState(data.ai_meaning)
+      setAiWordBreakdownState(data.ai_word_breakdown || [])
+      showToast('✨ Epigraphic AI Breakdown & Word Segmentations Updated!')
+    } catch (err) {
+      console.error(err)
+      showToast('AI Refinement service rate-limited or unavailable', false)
+    } finally {
+      setIsRefiningAI(false)
+    }
   }
 
   async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion, customBoxes = null) {
@@ -871,13 +908,16 @@ export default function App() {
             <SentenceOutput
               fullSentence={effectiveSentence}
               rawSentence={apiResponse?.raw_sentence || buildSentence(words)}
-              aiRefinedSentence={apiResponse?.ai_refined_sentence || null}
-              aiMeaning={apiResponse?.ai_meaning || null}
+              aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence || null}
+              aiMeaning={aiMeaningState || apiResponse?.ai_meaning || null}
+              aiWordBreakdown={aiWordBreakdownState.length > 0 ? aiWordBreakdownState : (apiResponse?.ai_word_breakdown || [])}
               romanSentence={apiResponse?.roman_sentence || ""}
               alternativeSentences={effectiveAlternatives}
               alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
               wordCount={apiResponse?.word_count || 0}
               lineCount={apiResponse?.line_count || 0}
+              onRefineAI={handleRefineAI}
+              isRefiningAI={isRefiningAI}
             />
           </div>
         </div>

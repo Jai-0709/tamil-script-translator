@@ -209,6 +209,7 @@ class TranslateResponse(BaseModel):
     raw_sentence:   Optional[str] = None
     ai_refined_sentence: Optional[str] = None
     ai_meaning:     Optional[str] = None
+    ai_word_breakdown: Optional[List[Dict]] = None
     alternative_sentences: List[str] = []
     alternative_roman_sentences: List[str] = []
     word_count:     int
@@ -568,10 +569,12 @@ async def translate(
             
     # ── 5. Optional Gemini API Free Tier Refinement ───────────────────────
     raw_char_seq = [w.modern_tamil for w in words if w.modern_tamil and w.modern_tamil != "?"]
-    gemini_res = gemini_epigraphic_refine(raw_char_seq)
+    ai_breakdown = None
+    gemini_res = gemini_epigraphic_refine(raw_char_seq, alternative_sentences[:50])
     if gemini_res and "full_sentence" in gemini_res and gemini_res["full_sentence"]:
         ai_refined_sentence = gemini_res["full_sentence"]
         ai_meaning = gemini_res.get("meaning")
+        ai_breakdown = gemini_res.get("word_breakdown")
         sentence = ai_refined_sentence
         roman_sentence = _to_roman(sentence)
         if "alternative_readings" in gemini_res and isinstance(gemini_res["alternative_readings"], list):
@@ -587,6 +590,7 @@ async def translate(
         raw_sentence   = raw_sentence,
         ai_refined_sentence = ai_refined_sentence,
         ai_meaning     = ai_meaning,
+        ai_word_breakdown = ai_breakdown,
         alternative_sentences = alternative_sentences,
         alternative_roman_sentences = alternative_roman_sentences,
         word_count     = len(words),
@@ -594,6 +598,45 @@ async def translate(
         image_width    = img_w,
         image_height   = img_h,
         img_hash       = img_hash,
+    )
+
+
+class RefineRequest(BaseModel):
+    raw_characters: List[str]
+    alternative_sentences: Optional[List[str]] = []
+
+
+class RefineResponse(BaseModel):
+    ai_refined_sentence: str
+    ai_meaning: Optional[str] = None
+    ai_word_breakdown: Optional[List[Dict]] = None
+    alternative_sentences: List[str] = []
+    roman_sentence: str = ""
+
+
+@app.post("/refine-ai", response_model=RefineResponse)
+async def refine_ai_endpoint(req: RefineRequest):
+    """
+    On-demand endpoint triggered when the user clicks '✨ Refine & Analyze with AI'.
+    Analyzes raw characters and top 50 Beam Search variations to produce word-segmented modern Tamil
+    plus word-by-word meaning breakdown.
+    """
+    res = gemini_epigraphic_refine(req.raw_characters, req.alternative_sentences)
+    if not res or "full_sentence" not in res:
+        raise HTTPException(status_code=500, detail="AI Refinement unavailable or failed.")
+        
+    refined_sentence = res["full_sentence"]
+    meaning = res.get("meaning", "")
+    breakdown = res.get("word_breakdown", [])
+    alts = res.get("alternative_readings", [])[:10]
+    roman = _to_roman(refined_sentence)
+    
+    return RefineResponse(
+        ai_refined_sentence=refined_sentence,
+        ai_meaning=meaning,
+        ai_word_breakdown=breakdown,
+        alternative_sentences=alts,
+        roman_sentence=roman
     )
 
 

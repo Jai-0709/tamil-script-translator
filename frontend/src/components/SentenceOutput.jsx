@@ -1,13 +1,14 @@
-import { useState } from 'react'
-
 export default function SentenceOutput({
   fullSentence,
   rawSentence,
   aiRefinedSentence,
   aiMeaning,
+  aiWordBreakdown = [],
   romanSentence,
   alternativeSentences = [],
-  alternativeRomanSentences = []
+  alternativeRomanSentences = [],
+  onRefineAI,
+  isRefiningAI = false,
 }) {
   const [copied, setCopied]          = useState(false)
   const [copiedAi, setCopiedAi]      = useState(false)
@@ -66,7 +67,7 @@ export default function SentenceOutput({
           alignItems: 'center',
           gap: 6
         }}>
-          📜 Inscription Translation & AI Refinement
+          📜 Inscription Translation & Epigraphic AI Analyzer
         </span>
 
         {/* Action Controls */}
@@ -146,7 +147,32 @@ export default function SentenceOutput({
           <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             🔤 Detected Character Sequence (Vision Model)
           </span>
+
+          {/* Dedicated Refine & Analyze with AI Button */}
+          {onRefineAI && (
+            <button
+              onClick={onRefineAI}
+              disabled={isRefiningAI || !detectedText}
+              style={{
+                background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: 6,
+                padding: '4px 12px',
+                fontSize: 10,
+                fontWeight: 700,
+                cursor: isRefiningAI ? 'wait' : 'pointer',
+                boxShadow: '0 2px 10px rgba(168, 85, 247, 0.3)',
+                display: 'flex', alignItems: 'center', gap: 5,
+                transition: 'all 0.15s ease',
+              }}
+              title="Analyze Top 50 Beam Search Variations with Gemini AI for Word-by-Word Breakdown"
+            >
+              {isRefiningAI ? '⏳ Analyzing Top 50 Variations...' : '✨ Refine & Analyze with AI'}
+            </button>
+          )}
         </div>
+
         <div style={{
           background: '#090a10',
           borderRadius: 8,
@@ -176,13 +202,13 @@ export default function SentenceOutput({
         </div>
       </div>
 
-      {/* ── Area 2: Final AI Epigraphic Refinement & Word Segmentation ───────── */}
+      {/* ── Area 2: Final AI Epigraphic Refinement & Word-by-Word Analysis ─────── */}
       {aiText && (
         <div style={{
-          display: 'flex', flexDirection: 'column', gap: 4,
-          padding: 10, borderRadius: 8,
+          display: 'flex', flexDirection: 'column', gap: 8,
+          padding: 12, borderRadius: 8,
           background: 'rgba(168, 85, 247, 0.06)',
-          border: '1px solid rgba(168, 85, 247, 0.25)',
+          border: '1px solid rgba(168, 85, 247, 0.3)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{
@@ -190,14 +216,14 @@ export default function SentenceOutput({
               textTransform: 'uppercase', letterSpacing: '0.06em',
               display: 'flex', alignItems: 'center', gap: 4
             }}>
-              ✨ AI Epigraphic Word Segmentation & Refinement (Gemini API)
+              ✨ Final AI Epigraphic Word Segmentation & Meaning Breakdown
             </span>
             <button
               onClick={() => copy(aiText, setCopiedAi)}
               style={{
                 background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)',
-                color: '#e9d5ff', borderRadius: 4, padding: '2px 6px',
-                fontSize: 9, fontWeight: 700, cursor: 'pointer',
+                color: '#e9d5ff', borderRadius: 4, padding: '2px 8px',
+                fontSize: 10, fontWeight: 700, cursor: 'pointer',
               }}
             >
               {copiedAi ? '✓ Copied' : '📋 Copy AI Text'}
@@ -206,17 +232,65 @@ export default function SentenceOutput({
 
           <div className="tamil-text" style={{
             fontSize: 20, fontWeight: 700, color: '#f3e8ff',
-            lineHeight: 1.4, wordBreak: 'break-word', marginTop: 2,
+            lineHeight: 1.4, wordBreak: 'break-word',
           }}>
             {aiText}
           </div>
 
+          {/* Word-by-Word Meaning Breakdown Cards */}
+          {aiWordBreakdown && aiWordBreakdown.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#d8b4fe', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                📖 Separated Word Breakdown & Meanings ({aiWordBreakdown.length} Words):
+              </span>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                gap: 6,
+                maxHeight: 160,
+                overflowY: 'auto',
+              }}>
+                {aiWordBreakdown.map((item, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      background: 'rgba(168, 85, 247, 0.12)',
+                      border: '1px solid rgba(168, 85, 247, 0.25)',
+                      borderRadius: 6,
+                      padding: '6px 10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 2,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span className="tamil-text" style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
+                        {item.word}
+                      </span>
+                      {item.type && (
+                        <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, background: 'rgba(249,115,22,0.2)', color: '#f97316', fontWeight: 600 }}>
+                          {item.type}
+                        </span>
+                      )}
+                    </div>
+                    {item.meaning && (
+                      <span style={{ fontSize: 10, color: '#e9d5ff', lineHeight: 1.2 }}>
+                        {item.meaning}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {aiMeaning && (
             <div style={{
               fontSize: 11, color: '#d8b4fe', fontStyle: 'italic',
-              marginTop: 4, display: 'flex', alignItems: 'center', gap: 4
+              marginTop: 4, padding: '4px 8px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: 6,
+              display: 'flex', alignItems: 'center', gap: 6
             }}>
-              <span>💡 Meaning:</span>
+              <span style={{ fontWeight: 700, color: '#c084fc' }}>💡 Overall Inscription Meaning:</span>
               <span>{aiMeaning}</span>
             </div>
           )}
