@@ -1,5 +1,7 @@
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
 import axios from 'axios'
+import Navbar from './components/Navbar'
+import LandingPage from './components/LandingPage'
 import UploadZone from './components/UploadZone'
 import InscriptionCanvas from './components/InscriptionCanvas'
 import OriginalImageViewer from './components/OriginalImageViewer'
@@ -32,6 +34,14 @@ export default function App() {
   const [error, setError]                 = useState(null)
   const [hoveredWordId, setHoveredWordId] = useState(null)
 
+  // Theme Management
+  const [theme, setTheme]                 = useState('dark')
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.setAttribute('data-theme', next)
+  }
+
   // Feature 1 — Confidence threshold
   const [threshold, setThreshold]         = useState(0)
 
@@ -56,8 +66,8 @@ export default function App() {
   // Feature 5 — Merge Distance (Permanently 0px)
   const mergeGap                          = 0
 
-  // Navigation
-  const [activePage, setActivePage]       = useState('translator')  // 'translator' | 'dataset'
+  // Navigation: 'landing' | 'translator' | 'dataset' | 'memory'
+  const [activePage, setActivePage]       = useState('landing')
 
   // Toast notification
   const [toast, setToast]                 = useState(null)  // { msg, ok }
@@ -91,12 +101,39 @@ export default function App() {
     img.src = url
   }
 
+  // 1-Click Preset Sample Selector Handler from Landing Page
+  async function handleSelectSample(sample) {
+    setActivePage('translator')
+    setIsLoading(true)
+    setError(null)
+    try {
+      showToast(`Loading ${sample.title}...`)
+      const res = await fetch(sample.image)
+      const blob = await res.blob()
+      const file = new File([blob], `${sample.id}.jpg`, { type: 'image/jpeg' })
+      handleFileSelect(file)
+
+      const form = new FormData()
+      form.append('file', file)
+      form.append('merge_gap', '0')
+
+      const translateRes = await axios.post(`${BACKEND_URL}/translate`, form)
+      setApiResponse(translateRes.data)
+      showToast(`Decoded ${sample.title}!`)
+    } catch (err) {
+      console.error("Failed to auto-translate preset sample:", err)
+      showToast("Error processing sample image", false)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   async function handleRefineAI() {
     if (!words || words.length === 0) return
     setIsRefiningAI(true)
     try {
       const rawChars = words.map(w => corrections[w.id] || w.modern_tamil).filter(c => c && c !== '?')
-      const res = await fetch('http://localhost:8000/refine-ai', {
+      const res = await fetch(`${BACKEND_URL}/refine-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -118,36 +155,46 @@ export default function App() {
     }
   }
 
+  // Translate API handler
   async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion, customBoxes = null) {
     if (!imageFile) return
-    
     if (!apiResponse) setIsLoading(true)
     else setIsRefetching(true)
-    
     setError(null)
-    setCorrections({})
+
     try {
-      let blob = imageFile
+      let fileToSend = imageFile
       let finalDisplayURL = imageURL
 
-      // Feature 3: crop image to selectedRegion before sending
-      if (regionOverride) {
-        blob = await cropImageToBlob(imageURL, regionOverride)
+      if (regionOverride && imageNaturalRef.current.w > 0) {
+        const cropCanvas = document.createElement('canvas')
+        const naturalW = imageNaturalRef.current.w
+        const naturalH = imageNaturalRef.current.h
+        const cropX = (regionOverride.x / 100) * naturalW
+        const cropY = (regionOverride.y / 100) * naturalH
+        const cropW = (regionOverride.w / 100) * naturalW
+        const cropH = (regionOverride.h / 100) * naturalH
+
+        cropCanvas.width = cropW
+        cropCanvas.height = cropH
+        const ctx = cropCanvas.getContext('2d')
+
+        const tempImg = new Image()
+        tempImg.src = imageURL
+        await new Promise((res) => { tempImg.onload = res })
+
+        ctx.drawImage(tempImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+
+        const blob = await new Promise((res) => cropCanvas.toBlob(res, 'image/jpeg', 0.95))
+        fileToSend = new File([blob], 'cropped_region.jpg', { type: 'image/jpeg' })
         finalDisplayURL = URL.createObjectURL(blob)
       }
 
       const form = new FormData()
-      form.append('file', blob, imageFile.name)
-      form.append('mode', segmentMode) // pass the mode
-      form.append('merge_gap', gapOverride) // use the override
-      form.append('is_region_crop', regionOverride ? 'true' : 'false')
-      if (customBoxes) {
-        form.append('custom_boxes_json', JSON.stringify(customBoxes))
-      }
-      
-      const { data } = await axios.post(`${BACKEND_URL}/translate`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      form.append('file', fileToSend)
+      form.append('merge_gap', String(gapOverride))
+
+      const data = await axios.post(`${BACKEND_URL}/translate`, form).then(r => r.data)
       setApiResponse(data)
       setDisplayImageURL(finalDisplayURL)
       setRegionMode(false)
@@ -161,14 +208,12 @@ export default function App() {
 
   // Feature 2 — apply a correction
   const handleCorrect = useCallback((wordId, newChar) => {
-    // 1. Update UI state instantly
     setCorrections(prev => {
       const next = { ...prev, [wordId]: newChar }
       saveCorrections(next)
       return next
     })
 
-    // 2. Send memory trace to backend
     if (apiResponse && apiResponse.words) {
       const word = apiResponse.words.find(w => w.id === wordId)
       if (word) {
@@ -218,7 +263,6 @@ export default function App() {
     }))
     showToast(`Removed Box #${wordId}`)
 
-    // Store in backend vector memory as __IGNORE__ so future uploads auto-suppress this box!
     if (word) {
       fetch(`${BACKEND_URL}/api/remember`, {
         method: 'POST',
@@ -231,7 +275,7 @@ export default function App() {
     }
   }, [apiResponse])
 
-  // Feature 4 — Manually draw & add a new box for unsegmented characters
+  // Feature 4 — Manually draw & add a new box
   const [isAddingBox, setIsAddingBox] = useState(false)
 
   const handleManualBoxAdded = useCallback(async (newBox) => {
@@ -291,657 +335,244 @@ export default function App() {
     }
   }, [apiResponse, imageFile, displayImageURL, imageURL])
 
-  // Save final segmentation layout and memory to disk
-  const handleSaveFinalSegmentation = useCallback(async () => {
-    if (!apiResponse || !apiResponse.words || !imageFile) {
-      showToast("No active segmentation to save", false)
-      return
-    }
-    showToast("Saving final segmentation memory...")
-    try {
-      const finalBoxes = apiResponse.words.map(w => ({
-        x: w.x, y: w.y, w: w.w, h: w.h,
-        modern_tamil: corrections[w.id] ?? w.modern_tamil
-      }))
-
-      const res = await fetch(`${BACKEND_URL}/api/save-final-segmentation`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename: imageFile.name,
-          boxes: finalBoxes,
-          img_hash: apiResponse?.img_hash || null
-        })
-      })
-
-      const data = await res.json()
-      if (res.ok) {
-        showToast(`Saved final segmentation (${data.saved_count} boxes) to memory!`)
-      } else {
-        showToast("Failed to save final segmentation", false)
-      }
-    } catch (err) {
-      console.error("Error saving final segmentation:", err)
-      showToast("Connection error — is backend running?", false)
-    }
-  }, [apiResponse, imageFile, corrections])
-
-  // Download corrections as JSON
-  function downloadCorrections() {
-    if (!apiResponse) return
-    const feedback = apiResponse.words.map(w => ({
-      id:            w.id,
-      original:      w.modern_tamil,
-      corrected:     corrections[w.id] ?? w.modern_tamil,
-      was_corrected: corrections[w.id] !== undefined,
-      confidence:    w.confidence,
-      x: w.x, y: w.y, w: w.w, h: w.h,
-    }))
-    const blob = new Blob([JSON.stringify(feedback, null, 2)], { type: 'application/json' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `corrections_${Date.now()}.json`
-    a.click()
-  }
-
   // Send corrected crops directly to the backend dataset folders
   async function sendToDataset() {
     if (!apiResponse || !imageFile) return
     const corrected = apiResponse.words
       .filter(w => corrections[w.id] !== undefined)
       .map(w => ({
-        corrected: corrections[w.id],
+        word_id:      w.id,
         x: w.x, y: w.y, w: w.w, h: w.h,
-        orig_w: apiResponse.image_width,
-        orig_h: apiResponse.image_height,
+        modern_tamil: corrections[w.id]
       }))
-    if (corrected.length === 0) { showToast('No corrections to send!', false); return }
 
-    let fileToSend = imageFile
-    if (displayImageURL && displayImageURL !== imageURL) {
-      try {
-        const res = await fetch(displayImageURL)
-        const blob = await res.blob()
-        fileToSend = new File([blob], "region_crop.jpg", { type: "image/jpeg" })
-      } catch (e) {
-        console.error("Error creating blob from displayImageURL", e)
-      }
-    }
+    if (!corrected.length) return
+    showToast("Sending corrected crops to dataset...")
 
-    const form = new FormData()
-    form.append('file', fileToSend)
-    form.append('corrections', JSON.stringify(corrected))
     try {
-      const res  = await fetch(`${BACKEND_URL}/api/dataset/add-crops`, { method: 'POST', body: form })
-      const data = await res.json()
-      if (res.ok) {
-        showToast(`Saved ${data.saved} crop${data.saved !== 1 ? 's' : ''} to Dataset!`)
-        setCorrections({})
-      } else {
-        showToast('Failed to save crops', false)
-      }
-    } catch {
-      showToast('Connection error — is the backend running?', false)
+      const res = await fetch(`${BACKEND_URL}/api/save-dataset-crop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_name:  imageFile.name,
+          corrections: corrected
+        })
+      }).then(r => r.json())
+
+      showToast(`Saved ${res.saved_count} crops to dataset folders!`)
+    } catch (err) {
+      showToast("Failed to save to dataset folder", false)
     }
   }
 
-  // Build effective word list (with corrections applied & sorted left-to-right by line and x)
-  const rawWords  = apiResponse?.words ?? []
-  const sortedWords = useMemo(() => {
-    return [...rawWords].sort((a, b) => {
-      const lineA = a.line || 1
-      const lineB = b.line || 1
-      if (lineA !== lineB) return lineA - lineB
-      return a.x - b.x
-    })
-  }, [rawWords])
-
+  // Filtered words based on confidence threshold
+  const rawWords = apiResponse?.words || []
   const words = useMemo(() => {
-    return sortedWords.map(w => ({
-      ...w,
-      modern_tamil: corrections[w.id] ?? w.modern_tamil,
-    }))
-  }, [sortedWords, corrections])
+    if (threshold === 0) return rawWords
+    return rawWords.filter(w => w.confidence >= threshold / 100)
+  }, [rawWords, threshold])
 
-  // Build effective full sentence (with corrections)
-  function buildSentence(ws) {
-    if (!ws.length) return ''
-    const lines = {}
-    for (const w of ws) lines[w.line] = [...(lines[w.line] || []), w.modern_tamil]
-    return Object.keys(lines).sort((a,b)=>a-b).map(l => lines[l].join('')).join('  ')
-  }
-  const hasUserCorrections = Object.keys(corrections).length > 0
-  const effectiveSentence = hasUserCorrections ? buildSentence(words) : (apiResponse?.full_sentence || buildSentence(words))
+  // Recalculate Modern Tamil Sentence with corrections & thresholds
+  const effectiveFullSentence = useMemo(() => {
+    if (!words.length) return apiResponse?.full_sentence || ''
+    return words
+      .map(w => corrections[w.id] ?? w.modern_tamil)
+      .filter(c => c && c !== '?')
+      .join(' ')
+  }, [words, corrections, apiResponse])
 
-  // Dynamically calculate Top 10 suitable alternative sentence readings for live canvas edits
+  // Top 10 alternative readings
   const effectiveAlternatives = useMemo(() => {
-    if (!words.length) return []
-    if (!hasUserCorrections && apiResponse?.alternative_sentences?.length) {
-      return apiResponse.alternative_sentences.slice(0, 10)
-    }
+    return apiResponse?.alternative_sentences || []
+  }, [apiResponse])
 
-    const lines = {}
-    for (const w of words) {
-      const l = w.line || 1
-      if (!lines[l]) lines[l] = []
-      const opts = w.ambiguous_options && w.ambiguous_options.length ? w.ambiguous_options : [w.modern_tamil]
-      lines[l].push(opts.slice(0, 3))
-    }
-
-    const sortedLines = Object.keys(lines).sort((a, b) => a - b)
-    const combinations = []
-
-    function generatePermutations(lineIdx, wordIdx, currentPath) {
-      if (combinations.length >= 10) return
-      if (lineIdx >= sortedLines.length) {
-        const sentence = currentPath.join('  ')
-        if (!combinations.includes(sentence)) combinations.push(sentence)
-        return
-      }
-      const lineNum = sortedLines[lineIdx]
-      const lineWords = lines[lineNum]
-      if (wordIdx >= lineWords.length) {
-        generatePermutations(lineIdx + 1, 0, currentPath)
-        return
-      }
-      for (const charOpt of lineWords[wordIdx]) {
-        generatePermutations(lineIdx, wordIdx + 1, [...currentPath, charOpt])
-        if (combinations.length >= 10) break
-      }
-    }
-
-    generatePermutations(0, 0, [])
-    return combinations.slice(0, 10)
-  }, [words, hasUserCorrections, apiResponse])
-
-  const hasResult = apiResponse !== null
-
-  // ── Dataset Studio page (full screen swap) ────────────────────────────
-  if (activePage === 'dataset') {
-    return <DatasetStudio onBack={() => setActivePage('translator')} />
-  }
+  const hasResult = !!apiResponse && !isLoading
 
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      height: '100vh', width: '100vw',
-      overflow: 'hidden', background: 'var(--bg-primary)',
-    }}>
-      {isLoading && <LoadingOverlay />}
+    <div className="flex flex-col min-h-screen bg-[#0b0c14] text-slate-100 font-sans">
+      
+      {/* ── Top SaaS Navigation Bar ── */}
+      <Navbar
+        activePage={activePage}
+        setActivePage={setActivePage}
+        theme={theme}
+        toggleTheme={toggleTheme}
+      />
 
-      {/* Correction Popover */}
-      {popover && (
-        <CorrectionPopover
-          word={popover.word}
-          position={{ x: popover.x, y: popover.y }}
-          onCorrect={handleCorrect}
-          onForgetMemory={handleForgetMemory}
-          onRemoveBox={handleRemoveBox}
-          onClose={() => setPopover(null)}
-          onSplitBox={(wordId) => {
-            setPopover(null)
-            if (!apiResponse || !apiResponse.words) return
-            const words = [...apiResponse.words]
-            const idx = words.findIndex(w => w.id === wordId)
-            if (idx === -1) return
-            
-            const w = words[idx]
-            words.splice(idx, 1)
-            
-            const wHalf = Math.floor(w.w / 2)
-            const box1 = { ...w, id: Date.now(), w: wHalf }
-            const box2 = { ...w, id: Date.now()+1, x: w.x + wHalf, w: w.w - wHalf }
-            
-            words.splice(idx, 0, box1, box2)
-            
-            const newBoxes = words.map(wd => ({ x: wd.x, y: wd.y, w: wd.w, h: wd.h, line: wd.line }))
-            handleTranslate(mergeGap, selectedRegion, newBoxes)
-          }}
-        />
-      )}
-
-      {/* ══ HEADER ══════════════════════════════════════════════════════ */}
-      <header style={{
-        flexShrink: 0, height: 'var(--header-h)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', background: '#0e1017',
-        borderBottom: '1px solid var(--border)',
-        zIndex: 50,
-      }}>
-        {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 8,
-            background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 16, color: '#fff', fontWeight: 700, flexShrink: 0,
-          }}>
-            🪨
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="tamil-text" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                தமிழ் கல்வெட்டு மொழிபெயர்ப்பு
-              </span>
-              <span style={{
-                fontSize: 10, padding: '2px 7px', borderRadius: 10,
-                background: 'rgba(34, 197, 94, 0.1)', color: '#4ade80',
-                border: '1px solid rgba(34, 197, 94, 0.2)', fontWeight: 600,
-                display: 'flex', alignItems: 'center', gap: 5,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
-                Online
-              </span>
-            </div>
-            <div style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--text-secondary)', marginTop: 1 }}>
-              Ancient Tamil Inscription Translation Platform
-            </div>
-          </div>
-        </div>
-
-        {/* Header Right / Navigation */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {/* Navigation tabs */}
-          <div style={{
-            display: 'flex', gap: 4,
-            background: 'var(--bg-card-2)',
-            borderRadius: 8, padding: 3,
-            border: '1px solid var(--border)',
-          }}>
-            {[
-              ['translator', 'Translator'],
-              ['memory', 'Memory Studio'],
-              ['dataset', 'Dataset Studio']
-            ].map(([page, label]) => (
-              <button
-                key={page}
-                onClick={() => setActivePage(page)}
-                style={{
-                  height: 32, padding: '0 16px', borderRadius: 6, border: 'none',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  background: activePage === page ? 'linear-gradient(135deg, #f97316 0%, #ea6a0a 100%)' : 'transparent',
-                  color: activePage === page ? '#fff' : 'var(--text-secondary)',
-                  boxShadow: activePage === page ? '0 2px 8px rgba(249,115,22,0.3)' : 'none',
-                  transition: 'all 0.15s ease',
-                }}
-              >{label}</button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      {/* ══ TOOLBAR ═════════════════════════════════════════════════════ */}
-      <div style={{
-        flexShrink: 0, height: 'var(--toolbar-h)',
-        display: 'flex', alignItems: 'center',
-        padding: '0 20px', background: 'var(--bg-card)',
-        borderBottom: '1px solid var(--border)', gap: 14,
-      }}>
-        <UploadZone
-          onFileSelect={handleFileSelect}
-          onTranslate={() => handleTranslate(mergeGap)}
-          imageFile={imageFile}
-          imageURL={imageURL}
-          isLoading={isLoading || isRefetching}
-        />
-
-        {/* ── Feature 3: Region mode toggle ── */}
-        {imageURL && (
-          <button
-            onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 6,
-              height: 36, padding: '0 16px', borderRadius: 8,
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-              background: regionMode ? 'rgba(249,115,22,0.18)' : 'var(--bg-card-2)',
-              color: regionMode ? '#f97316' : 'var(--text-primary)',
-              border: regionMode ? '1px solid rgba(249,115,22,0.4)' : '1px solid var(--border)',
-              boxShadow: regionMode ? '0 0 12px rgba(249,115,22,0.2)' : 'none',
-              transition: 'all 0.15s ease',
-            }}
-            title="Crop & translate a specific region of interest"
-          >
-            <span style={{ fontSize: 13 }}>{regionMode ? '✂' : '🔲'}</span>
-            {regionMode ? 'Region Crop Active' : 'Select Region'}
-          </button>
-        )}
-
-
-
-        {/* Send to Dataset */}
-        {hasResult && Object.keys(corrections).length > 0 && (
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
-            <button
-              id="btn-send-dataset"
-              onClick={sendToDataset}
-              style={{
-                padding: '7px 16px', borderRadius: 7, border: 'none',
-                background: '#f97316',
-                color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                transition: 'background 0.15s ease',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background='#ea580c' }}
-              onMouseLeave={e => { e.currentTarget.style.background='#f97316' }}
-            >
-              Send to Dataset ({Object.keys(corrections).length})
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ══ KPI METRICS STRIP ═════════════════════════════════════════ */}
-      {hasResult && (
-        <div style={{
-          flexShrink: 0, padding: '8px 24px',
-          background: 'rgba(0, 0, 0, 0.25)',
-          borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', gap: 16,
-        }}>
-          {[
-            {
-              label: 'Detected Characters',
-              val: words.length,
-              unit: 'chars',
-              color: '#f97316'
-            },
-            {
-              label: 'Average Confidence',
-              val: `${words.length ? Math.round(words.reduce((s,w)=>s+w.confidence, 0) / words.length * 100) : 0}%`,
-              unit: 'score',
-              color: '#22c55e'
-            },
-            {
-              label: 'Lines Segmented',
-              val: apiResponse?.line_count || 1,
-              unit: apiResponse?.line_count === 1 ? 'line' : 'lines',
-              color: '#3b82f6'
-            },
-            {
-              label: 'User Fixes',
-              val: Object.keys(corrections).length,
-              unit: 'active',
-              color: Object.keys(corrections).length > 0 ? '#22c55e' : '#64748b'
-            }
-          ].map(kpi => (
-            <div key={kpi.label} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: 'rgba(255, 255, 255, 0.025)',
-              border: '1px solid var(--border)',
-              borderRadius: 8, padding: '6px 16px', flex: 1,
-            }}>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: kpi.color, lineHeight: 1.1 }}>
-                  {kpi.val} <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)' }}>{kpi.unit}</span>
-                </div>
-                <div style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: 2 }}>
-                  {kpi.label}
-                </div>
-              </div>
-            </div>
-          ))}
+      {/* ── Toast Notification Popup ── */}
+      {toast && (
+        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-xs font-bold shadow-2xl flex items-center gap-3 fade-up ${
+          toast.ok
+            ? 'bg-slate-900/95 border-emerald-500/50 text-emerald-300 shadow-emerald-500/10'
+            : 'bg-slate-900/95 border-rose-500/50 text-rose-300 shadow-rose-500/10'
+        }`}>
+          <span>{toast.ok ? '✓' : '⚠️'}</span>
+          <span>{toast.msg}</span>
         </div>
       )}
 
-      {/* ══ BODY ════════════════════════════════════════════════════════ */}
-      {activePage === 'memory' ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* ── Main View Router ── */}
+      {activePage === 'landing' ? (
+        <LandingPage
+          onSelectSample={handleSelectSample}
+          onLaunchWorkspace={() => setActivePage('translator')}
+        />
+      ) : activePage === 'memory' ? (
+        <div className="flex-1 min-h-0">
           <MemoryStudio />
         </div>
       ) : activePage === 'dataset' ? (
-        <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <div className="flex-1 min-h-0">
           <DatasetStudio />
         </div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden' }}>
+        /* ── Workspace Studio ── */
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          
+          {/* Workspace Toolbar Controls */}
+          <div className="flex-shrink-0 h-14 bg-[#121422] border-b border-white/10 px-4 sm:px-6 flex items-center justify-between gap-4 overflow-x-auto">
+            <div className="flex items-center gap-3">
+              <UploadZone
+                onFileSelect={handleFileSelect}
+                onTranslate={() => handleTranslate(mergeGap)}
+                imageFile={imageFile}
+                imageURL={imageURL}
+                isLoading={isLoading || isRefetching}
+              />
 
-        {/* LEFT — canvas (58%) */}
-        <div style={{
-          width: '58%', display: 'flex', flexDirection: 'column',
-          borderRight: '1px solid var(--border)',
-          overflowY: 'auto', overflowX: 'hidden',
-          background: 'var(--bg-primary)',
-        }}>
-          {error && (
-            <div style={{
-              flexShrink: 0, margin: '12px 16px 0', padding: '12px 16px', borderRadius: 10,
-              background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: '#f87171', fontSize: 13,
-            }}>
-              <strong>Error: </strong>{error}
-            </div>
-          )}
-
-          {/* ── PANEL 1: Detection canvas / Region Selector ── */}
-          <div style={{ flexShrink: 0 }}>
-            <div style={{
-              position: 'sticky', top: 0, zIndex: 10,
-              padding: '8px 16px', fontSize: 11, letterSpacing: '0.06em',
-              fontWeight: 600, textTransform: 'uppercase', color: 'var(--text-secondary)',
-              background: '#0e1017',
-              borderBottom: '1px solid var(--border)',
-              display: 'flex', alignItems: 'center', gap: 8,
-            }}>
-              {regionMode
-                ? 'Region Selector — Drag to select focus area'
-                : 'Bounding Box Segmentation View'}
-              {words.length > 0 && !regionMode && (
-                <span style={{
-                  marginLeft: 'auto', background: 'rgba(249, 115, 22, 0.12)',
-                  color: 'var(--accent)', border: '1px solid rgba(249, 115, 22, 0.25)',
-                  padding: '2px 8px', borderRadius: 12,
-                  fontSize: 10, fontWeight: 700,
-                }}>
-                  {words.length} items
-                </span>
-              )}
-              {regionMode && (
-                <span style={{
-                  marginLeft: 'auto', color: 'var(--accent)',
-                  fontSize: 10, fontWeight: 600,
-                }}>
-                  {selectedRegion ? '✓ Region selected — click Translate' : 'Draw a rectangle on the image'}
-                </span>
+              {imageURL && (
+                <button
+                  onClick={() => { setRegionMode(r => !r); setSelectedRegion(null); }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    regionMode
+                      ? 'bg-orange-500/20 text-orange-400 border-orange-500/40 shadow-lg shadow-orange-500/20'
+                      : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  <span>{regionMode ? '✂' : '🔲'}</span>
+                  <span>{regionMode ? 'Region Crop Active' : 'Select Region'}</span>
+                </button>
               )}
             </div>
 
-            <div style={{
-              padding: 14, width: '100%', boxSizing: 'border-box',
-              opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
-            }}>
-              {imageURL ? (
+            {/* Threshold Slider & Action Buttons */}
+            {hasResult && (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-lg border border-white/10">
+                  <span className="text-[11px] font-semibold text-slate-400">Confidence:</span>
+                  <input
+                    type="range" min="0" max="95" value={threshold}
+                    onChange={e => setThreshold(Number(e.target.value))}
+                    className="w-20 accent-orange-500 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-amber-400 min-w-[32px] text-right">{threshold}%</span>
+                </div>
+
+                {Object.keys(corrections).length > 0 && (
+                  <button
+                    onClick={sendToDataset}
+                    className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-slate-950 font-bold text-xs shadow-md transition-colors"
+                  >
+                    Send Corrections ({Object.keys(corrections).length})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Workspace Body Grid */}
+          <div className="flex-1 flex overflow-hidden">
+            
+            {/* Left Canvas Panel */}
+            <div className="w-full lg:w-[58%] border-r border-white/10 flex flex-col bg-[#090a10] relative">
+              {isLoading && <LoadingOverlay message="Analyzing Inscription with Smart-Tiled YOLO Vision..." />}
+              
+              {displayImageURL ? (
                 regionMode ? (
                   <RegionSelector
-                    imageURL={imageURL}
-                    imageNaturalWidth={imageNaturalRef.current.w}
-                    imageNaturalHeight={imageNaturalRef.current.h}
-                    selectedRegion={selectedRegion}
-                    onRegionSelect={setSelectedRegion}
-                    onClear={() => setSelectedRegion(null)}
+                    imageSrc={imageURL}
+                    onConfirmCrop={(region) => {
+                      setSelectedRegion(region)
+                      handleTranslate(mergeGap, region)
+                    }}
+                    onCancel={() => setRegionMode(false)}
                   />
                 ) : (
                   <InscriptionCanvas
-                    imageURL={displayImageURL}
+                    imageSrc={displayImageURL}
                     words={words}
-                    imageWidth={apiResponse?.image_width}
-                    imageHeight={apiResponse?.image_height}
                     hoveredWordId={hoveredWordId}
-                    onWordHover={setHoveredWordId}
-                    threshold={threshold}
+                    setHoveredWordId={setHoveredWordId}
                     corrections={corrections}
-                    isAddingBox={isAddingBox}
-                    onAddBoxComplete={handleManualBoxAdded}
-                    onWordClick={(wordId, screenX, screenY) => {
-                      const word = words.find(w => w.id === wordId)
-                      if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })
+                    onWordClick={(word, e) => {
+                      const rect = e.target.getBoundingClientRect()
+                      setPopover({ word, x: rect.left + rect.width / 2, y: rect.bottom + 8 })
                     }}
-                    onBoxesEdited={(newBoxes) => handleTranslate(mergeGap, selectedRegion, newBoxes)}
+                    isAddingBox={isAddingBox}
+                    setIsAddingBox={setIsAddingBox}
+                    onManualBoxAdded={handleManualBoxAdded}
                   />
                 )
               ) : (
-                <EmptyCanvas />
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-3xl mb-4">
+                    🪨
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1 font-heading">No Inscription Loaded</h3>
+                  <p className="text-xs text-slate-400 max-w-sm">
+                    Upload an image using the top bar or try one of our pre-loaded historical sample inscriptions.
+                  </p>
+                </div>
+              )}
+
+              {popover && (
+                <CorrectionPopover
+                  word={popover.word}
+                  position={{ x: popover.x, y: popover.y }}
+                  currentCorrection={corrections[popover.word.id]}
+                  onCorrect={(newChar) => {
+                    handleCorrect(popover.word.id, newChar)
+                    setPopover(null)
+                  }}
+                  onForgetMemory={() => handleForgetMemory(popover.word.id)}
+                  onRemoveBox={() => handleRemoveBox(popover.word.id)}
+                  onClose={() => setPopover(null)}
+                />
               )}
             </div>
-          </div>
 
-          {displayImageURL && (
-            <div style={{ flexShrink: 0 }}>
-              <div style={{
-                position: 'sticky', top: 0, zIndex: 10,
-                padding: '6px 14px', fontSize: 10, letterSpacing: '0.08em',
-                textTransform: 'uppercase', color: 'var(--text-secondary)',
-                background: 'var(--bg-card)', borderBottom: '1px solid var(--border)',
-                borderTop: '2px solid var(--accent)', display: 'flex', alignItems: 'center', gap: 6,
-              }}>
-                <span style={{ fontSize: 12 }}>🖼️</span>
-                Original Image — No boxes, read the full inscription
-              </div>
-              <div style={{ 
-                padding: 14, width: '100%', boxSizing: 'border-box',
-                opacity: isRefetching ? 0.4 : 1, transition: 'opacity 0.2s', pointerEvents: isRefetching ? 'none' : 'auto'
-              }}>
-                <OriginalImageViewer
-                  imageURL={displayImageURL}
-                  words={words}
-                  imageWidth={apiResponse?.image_width}
-                  imageHeight={apiResponse?.image_height}
-                  hoveredWordId={hoveredWordId}
-                  onWordHover={setHoveredWordId}
-                />
-              </div>
+            {/* Right Panel: Recognized Symbols & AI Sentence Breakdown */}
+            <div className="hidden lg:flex w-[42%] flex-col bg-[#0e101b] overflow-y-auto p-4 gap-4">
+              <TranslationPanel
+                words={words}
+                hoveredWordId={hoveredWordId}
+                setHoveredWordId={setHoveredWordId}
+                corrections={corrections}
+                onWordClick={(word, e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setPopover({ word, x: rect.left, y: rect.bottom + 4 })
+                }}
+              />
+
+              <SentenceOutput
+                fullSentence={effectiveFullSentence}
+                rawSentence={apiResponse?.raw_sentence}
+                aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence}
+                aiMeaning={aiMeaningState || apiResponse?.ai_meaning}
+                aiWordBreakdown={aiWordBreakdownState.length ? aiWordBreakdownState : apiResponse?.ai_word_breakdown}
+                romanSentence={apiResponse?.roman_sentence}
+                alternativeSentences={effectiveAlternatives}
+                alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
+                onRefineAI={handleRefineAI}
+                isRefiningAI={isRefiningAI}
+              />
             </div>
-          )}
-        </div>
 
-        {/* RIGHT — translation (42%) */}
-        <div style={{
-          width: '42%', display: 'flex', flexDirection: 'column',
-          overflow: 'hidden', background: 'var(--bg-primary)',
-        }}>
-          <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
-            <TranslationPanel
-              words={words}
-              hoveredWordId={hoveredWordId}
-              onWordHover={setHoveredWordId}
-              threshold={threshold}
-              corrections={corrections}
-              onRemoveBox={handleRemoveBox}
-              isAddingBox={isAddingBox}
-              onAddBoxClick={() => setIsAddingBox(prev => !prev)}
-              onSaveSegmentation={handleSaveFinalSegmentation}
-              onWordClick={(wordId, screenX, screenY) => {
-                const word = words.find(w => w.id === wordId)
-                if (word) setPopover({ word, x: screenX + 12, y: screenY - 20 })
-              }}
-            />
           </div>
 
-          <div style={{
-            flexShrink: 0, padding: '12px 16px',
-            borderTop: '1px solid var(--border)', background: 'var(--bg-card)',
-          }}>
-            <SentenceOutput
-              fullSentence={effectiveSentence}
-              rawSentence={apiResponse?.raw_sentence || buildSentence(words)}
-              aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence || null}
-              aiMeaning={aiMeaningState || apiResponse?.ai_meaning || null}
-              aiWordBreakdown={aiWordBreakdownState.length > 0 ? aiWordBreakdownState : (apiResponse?.ai_word_breakdown || [])}
-              romanSentence={apiResponse?.roman_sentence || ""}
-              alternativeSentences={effectiveAlternatives}
-              alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
-              wordCount={apiResponse?.word_count || 0}
-              lineCount={apiResponse?.line_count || 0}
-              onRefineAI={handleRefineAI}
-              isRefiningAI={isRefiningAI}
-            />
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* ── Toast notification ────────────────────────────────────────── */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: toast.ok ? 'rgba(34,197,94,0.95)' : 'rgba(239,68,68,0.95)',
-          color: '#fff', fontWeight: 700, fontSize: 13,
-          padding: '10px 22px', borderRadius: 10,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-          zIndex: 9999, pointerEvents: 'none',
-          animation: 'fadeInUpToast 0.25s ease',
-          whiteSpace: 'nowrap',
-        }}>
-          {toast.msg}
         </div>
       )}
 
-      <style>{`
-        @keyframes fadeInUpToast {
-          from { opacity: 0; transform: translateX(-50%) translateY(12px); }
-          to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-        }
-      `}</style>
-    </div>
-  )
-}
-
-/* ── Crop image to region (client-side) ─────────────────────────────────── */
-async function cropImageToBlob(imageURL, region) {
-  return new Promise((resolve, reject) => {
-    try {
-      const img = new Image()
-      img.onload = () => {
-        try {
-          const canvas = document.createElement('canvas')
-          canvas.width  = region.w
-          canvas.height = region.h
-          const ctx = canvas.getContext('2d')
-          ctx.drawImage(img, region.x, region.y, region.w, region.h, 0, 0, region.w, region.h)
-          canvas.toBlob(blob => {
-            if (blob) resolve(blob)
-            else reject(new Error('Failed to create image blob'))
-          }, 'image/jpeg', 0.95)
-        } catch (err) {
-          reject(err)
-        }
-      }
-      img.onerror = () => reject(new Error('Failed to load image for cropping'))
-      img.src = imageURL
-    } catch (err) {
-      reject(err)
-    }
-  })
-}
-
-/* ── Small reusable components ─────────────────────────────────────────── */
-function Pill({ children, accent, green }) {
-  return (
-    <span style={{
-      fontSize: 11, padding: '3px 10px', borderRadius: 20,
-      background: accent ? 'var(--accent-muted)' : green ? 'rgba(34,197,94,0.1)' : 'var(--bg-card-3)',
-      color: accent ? 'var(--accent)' : green ? '#22c55e' : 'var(--text-secondary)',
-      border: `1px solid ${accent ? 'rgba(249,115,22,0.25)' : green ? 'rgba(34,197,94,0.25)' : 'var(--border)'}`,
-      fontWeight: (accent || green) ? 600 : 400,
-    }}>
-      {children}
-    </span>
-  )
-}
-
-function EmptyCanvas() {
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-      gap: 16, opacity: 0.2, userSelect: 'none',
-    }}>
-      <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
-        <rect x="4" y="4" width="56" height="56" rx="10" stroke="currentColor" strokeWidth="2" strokeDasharray="6 4"/>
-        <path d="M22 38l8-10 6 7 4-5 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        <circle cx="20" cy="22" r="4" stroke="currentColor" strokeWidth="2"/>
-      </svg>
-      <p style={{ color: 'var(--text-secondary)', fontSize: 13 }}>
-        Upload an inscription image to begin
-      </p>
     </div>
   )
 }
