@@ -48,7 +48,17 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
     if not key:
         return None
 
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+    # Load fresh .env values
+    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_file):
+        with open(env_file, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("GEMINI_API_KEY="):
+                    key = line.split("=", 1)[1].strip()
+                elif line.startswith("GEMINI_MODEL="):
+                    os.environ["GEMINI_MODEL"] = line.split("=", 1)[1].strip()
+
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.1-flash-lite").strip()
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
 
     raw_text = "".join(raw_characters).strip()
