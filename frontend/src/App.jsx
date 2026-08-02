@@ -109,7 +109,7 @@ export default function App() {
       setAiRefinedState(data.ai_refined_sentence)
       setAiMeaningState(data.ai_meaning)
       setAiWordBreakdownState(data.ai_word_breakdown || [])
-      showToast('✨ Epigraphic AI Breakdown & Word Segmentations Updated!')
+      showToast('Epigraphic AI Breakdown & Word Segmentations Updated!')
     } catch (err) {
       console.error(err)
       showToast('AI Refinement service rate-limited or unavailable', false)

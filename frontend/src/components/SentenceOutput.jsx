@@ -48,7 +48,7 @@ export default function SentenceOutput({
       borderRadius: 12,
       background: '#12141f',
       border: '1px solid var(--border)',
-      padding: isCollapsed ? '8px 14px' : 14,
+      padding: isCollapsed ? '10px 14px' : 14,
       display: 'flex',
       flexDirection: 'column',
       gap: isCollapsed ? 0 : 12,
@@ -72,15 +72,15 @@ export default function SentenceOutput({
             alignItems: 'center',
             gap: 6
           }}>
-            📜 Inscription Translation & Epigraphic AI Analyzer
+            Inscription Translation & Epigraphic AI Analyzer
           </span>
 
           {/* Minimize / Expand Toggle Arrow Button */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             style={{
-              background: isCollapsed ? 'rgba(249, 115, 22, 0.15)' : 'rgba(255, 255, 255, 0.06)',
-              border: `1px solid ${isCollapsed ? 'rgba(249, 115, 22, 0.4)' : 'var(--border)'}`,
+              background: isCollapsed ? 'rgba(249, 115, 22, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+              border: `1px solid ${isCollapsed ? 'rgba(249, 115, 22, 0.35)' : 'var(--border)'}`,
               color: isCollapsed ? '#f97316' : 'var(--text-primary)',
               borderRadius: 6,
               padding: '3px 10px',
@@ -92,9 +92,12 @@ export default function SentenceOutput({
               gap: 4,
               transition: 'all 0.15s ease',
             }}
-            title={isCollapsed ? "Expand Panel to see translation details" : "Minimize Panel to see character breakdown clearly"}
+            title={isCollapsed ? "Expand Panel to see translation details" : "Minimize Panel to view canvas breakdown"}
           >
-            {isCollapsed ? '▲ Expand Panel' : '▼ Minimize Panel'}
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <span>{isCollapsed ? 'Expand Panel' : 'Minimize Panel'}</span>
           </button>
         </div>
 
@@ -162,7 +165,7 @@ export default function SentenceOutput({
               transition: 'all 0.15s ease',
             }}
           >
-            {copied ? '✓ Copied' : 'Copy Output'}
+            {copied ? 'Copied' : 'Copy Output'}
           </button>
         </div>
       </div>
@@ -174,7 +177,7 @@ export default function SentenceOutput({
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                🔤 Detected Character Sequence (Vision Model)
+                Vision Model Detected Sequence
               </span>
 
               {/* Dedicated Refine & Analyze with AI Button */}
@@ -183,7 +186,7 @@ export default function SentenceOutput({
                   onClick={onRefineAI}
                   disabled={isRefiningAI || !detectedText}
                   style={{
-                    background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                    background: 'linear-gradient(135deg, #9333ea 0%, #6b21a8 100%)',
                     color: '#ffffff',
                     border: 'none',
                     borderRadius: 6,
@@ -191,13 +194,16 @@ export default function SentenceOutput({
                     fontSize: 10,
                     fontWeight: 700,
                     cursor: isRefiningAI ? 'wait' : 'pointer',
-                    boxShadow: '0 2px 10px rgba(168, 85, 247, 0.3)',
+                    boxShadow: '0 2px 8px rgba(147, 51, 234, 0.25)',
                     display: 'flex', alignItems: 'center', gap: 5,
                     transition: 'all 0.15s ease',
                   }}
                   title="Analyze Top 50 Beam Search Variations with Gemini AI for Word-by-Word Breakdown"
                 >
-                  {isRefiningAI ? '⏳ Analyzing Top 50 Variations...' : '✨ Refine & Analyze with AI'}
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                  <span>{isRefiningAI ? 'Analyzing Top 50 Variations...' : 'Refine & Analyze with AI'}</span>
                 </button>
               )}
             </div>
@@ -236,8 +242,8 @@ export default function SentenceOutput({
             <div style={{
               display: 'flex', flexDirection: 'column', gap: 8,
               padding: 12, borderRadius: 8,
-              background: 'rgba(168, 85, 247, 0.06)',
-              border: '1px solid rgba(168, 85, 247, 0.3)',
+              background: 'rgba(168, 85, 247, 0.05)',
+              border: '1px solid rgba(168, 85, 247, 0.25)',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{
@@ -245,7 +251,7 @@ export default function SentenceOutput({
                   textTransform: 'uppercase', letterSpacing: '0.06em',
                   display: 'flex', alignItems: 'center', gap: 4
                 }}>
-                  ✨ Final AI Epigraphic Word Segmentation & Meaning Breakdown
+                  AI Epigraphic Segmentation & Meaning Breakdown
                 </span>
                 <button
                   onClick={() => copy(aiText, setCopiedAi)}
@@ -255,7 +261,7 @@ export default function SentenceOutput({
                     fontSize: 10, fontWeight: 700, cursor: 'pointer',
                   }}
                 >
-                  {copiedAi ? '✓ Copied' : '📋 Copy AI Text'}
+                  {copiedAi ? 'Copied' : 'Copy AI Text'}
                 </button>
               </div>
 
@@ -270,7 +276,7 @@ export default function SentenceOutput({
               {aiWordBreakdown && aiWordBreakdown.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#d8b4fe', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    📖 Separated Word Breakdown & Meanings ({aiWordBreakdown.length} Words):
+                    Separated Word Analysis ({aiWordBreakdown.length} Words):
                   </span>
                   <div style={{
                     display: 'grid',
@@ -285,14 +291,14 @@ export default function SentenceOutput({
                         <div
                           key={idx}
                           style={{
-                            background: isRestored ? 'rgba(234, 179, 8, 0.12)' : 'rgba(168, 85, 247, 0.12)',
-                            border: isRestored ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(168, 85, 247, 0.25)',
+                            background: isRestored ? 'rgba(234, 179, 8, 0.08)' : 'rgba(168, 85, 247, 0.08)',
+                            border: isRestored ? '1px solid rgba(234, 179, 8, 0.35)' : '1px solid rgba(168, 85, 247, 0.2)',
                             borderRadius: 8,
                             padding: '8px 12px',
                             display: 'flex',
                             flexDirection: 'column',
                             gap: 3,
-                            boxShadow: isRestored ? '0 0 10px rgba(234, 179, 8, 0.15)' : 'none',
+                            boxShadow: isRestored ? '0 0 8px rgba(234, 179, 8, 0.1)' : 'none',
                             transition: 'all 0.15s ease',
                           }}
                         >
@@ -304,13 +310,13 @@ export default function SentenceOutput({
                               fontSize: 8,
                               padding: '2px 6px',
                               borderRadius: 4,
-                              background: isRestored ? 'rgba(234, 179, 8, 0.25)' : 'rgba(249,115,22,0.2)',
+                              background: isRestored ? 'rgba(234, 179, 8, 0.2)' : 'rgba(249,115,22,0.15)',
                               color: isRestored ? '#fde047' : '#f97316',
                               fontWeight: 700,
                               textTransform: 'uppercase',
                               letterSpacing: '0.04em'
                             }}>
-                              {isRestored ? '✨ AI Restored' : (item.type || 'Word')}
+                              {isRestored ? 'AI Restored' : (item.type || 'Word')}
                             </span>
                           </div>
                           {item.meaning && (
@@ -328,10 +334,10 @@ export default function SentenceOutput({
               {aiMeaning && (
                 <div style={{
                   fontSize: 11, color: '#d8b4fe', fontStyle: 'italic',
-                  marginTop: 4, padding: '4px 8px', background: 'rgba(168, 85, 247, 0.1)', borderRadius: 6,
+                  marginTop: 4, padding: '6px 10px', background: 'rgba(168, 85, 247, 0.08)', borderRadius: 6,
                   display: 'flex', alignItems: 'center', gap: 6
                 }}>
-                  <span style={{ fontWeight: 700, color: '#c084fc' }}>💡 Overall Inscription Meaning:</span>
+                  <span style={{ fontWeight: 700, color: '#c084fc', fontStyle: 'normal' }}>Historical Meaning:</span>
                   <span>{aiMeaning}</span>
                 </div>
               )}
@@ -371,7 +377,7 @@ export default function SentenceOutput({
                   }}
                   title="Copy all top alternative readings to clipboard"
                 >
-                  {copiedAll ? '✓ Copied All!' : '📋 Copy All Readings'}
+                  {copiedAll ? 'Copied All!' : 'Copy All Readings'}
                 </button>
               </div>
 
@@ -417,7 +423,7 @@ export default function SentenceOutput({
                         <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                           Option #{idx + 1}
                         </span>
-                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>📋 Copy</span>
+                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>Copy</span>
                       </div>
 
                       <div className="tamil-text" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
