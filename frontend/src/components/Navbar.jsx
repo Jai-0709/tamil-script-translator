@@ -10,157 +10,170 @@ export default function Navbar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 w-full glass-panel border-b border-[var(--border)] transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <header style={{
+      position: 'sticky',
+      top: 0,
+      zIndex: 100,
+      width: '100%',
+      height: '64px',
+      background: 'rgba(12, 13, 20, 0.85)',
+      backdropFilter: 'blur(16px)',
+      WebkitBackdropFilter: 'blur(16px)',
+      borderBottom: '1px solid var(--border)',
+      display: 'flex',
+      alignItems: 'center',
+    }}>
+      <div style={{
+        maxWidth: '1280px',
+        width: '100%',
+        margin: '0 auto',
+        padding: '0 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}>
         
         {/* Brand Logo & Title */}
         <div 
           onClick={() => setActivePage('landing')}
-          className="flex items-center gap-3 cursor-pointer group"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            cursor: 'pointer',
+          }}
         >
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 via-orange-500 to-yellow-400 p-0.5 shadow-lg shadow-orange-500/20 group-hover:scale-105 transition-transform">
-            <div className="w-full h-full bg-[#0c0d14] rounded-[10px] flex items-center justify-center">
-              <span className="tamil-text text-xl font-black text-amber-400">அ</span>
+          <div style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            background: 'linear-gradient(135deg, #ea580c 0%, #f97316 50%, #eab308 100%)',
+            padding: '2px',
+            boxShadow: '0 4px 14px rgba(234, 88, 12, 0.25)',
+          }}>
+            <div style={{
+              width: '100%',
+              height: '100%',
+              background: '#0c0d14',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <span className="tamil-text" style={{ fontSize: '18px', fontWeight: 900, color: '#fde047' }}>அ</span>
             </div>
           </div>
+
           <div>
-            <div className="flex items-center gap-2">
-              <span className="font-heading font-extrabold text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
-                AKSHARA <span className="text-orange-500 font-medium">EPIGRAPHY</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{
+                fontFamily: 'Outfit, sans-serif',
+                fontWeight: 900,
+                fontSize: '16px',
+                letterSpacing: '-0.02em',
+                color: '#ffffff',
+              }}>
+                AKSHARA <span style={{ color: '#f97316', fontWeight: 600 }}>EPIGRAPHY</span>
               </span>
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded">
+              <span style={{
+                fontSize: '9px',
+                fontWeight: 800,
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                background: 'rgba(234, 88, 12, 0.15)',
+                color: '#f97316',
+                border: '1px solid rgba(234, 88, 12, 0.3)',
+              }}>
                 AI SaaS
               </span>
             </div>
-            <p className="text-[10px] text-slate-400 font-medium -mt-0.5">
+            <p style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500, marginTop: '-2px' }}>
               Tamil Inscription Deciphering Engine
             </p>
           </div>
         </div>
 
-        {/* Desktop Navigation Links */}
-        <nav className="hidden md:flex items-center gap-1 bg-white/5 border border-white/10 p-1 rounded-full backdrop-blur-md">
-          <button
-            onClick={() => setActivePage('landing')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              activePage === 'landing'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            Home
-          </button>
-          
-          <button
-            onClick={() => setActivePage('translator')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              activePage === 'translator'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            AI Workspace
-          </button>
-
-          <button
-            onClick={() => setActivePage('dataset')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              activePage === 'dataset'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            Dataset Studio
-          </button>
-
-          <button
-            onClick={() => setActivePage('memory')}
-            className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all ${
-              activePage === 'memory'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-md shadow-orange-500/25'
-                : 'text-slate-300 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            Memory Studio
-          </button>
+        {/* Desktop Navigation Links (Nav Pills) */}
+        <nav style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: 'rgba(255, 255, 255, 0.04)',
+          border: '1px solid var(--border)',
+          padding: '4px',
+          borderRadius: '100px',
+        }}>
+          {[
+            ['landing', 'Home'],
+            ['translator', 'AI Workspace'],
+            ['dataset', 'Dataset Studio'],
+            ['memory', 'Memory Studio'],
+          ].map(([pageKey, label]) => (
+            <button
+              key={pageKey}
+              onClick={() => setActivePage(pageKey)}
+              style={{
+                padding: '6px 16px',
+                borderRadius: '100px',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: 'none',
+                background: activePage === pageKey ? 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)' : 'transparent',
+                color: activePage === pageKey ? '#0c0d14' : 'var(--text-secondary)',
+                boxShadow: activePage === pageKey ? '0 4px 12px rgba(234, 88, 12, 0.3)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
 
-        {/* Right Actions (API Status + Launch Workspace CTA + Theme Toggle) */}
-        <div className="hidden sm:flex items-center gap-3">
-          {/* API Health Status Badge */}
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        {/* Right Actions (API Status + Launch Workspace CTA) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* API Health Badge */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 10px',
+            borderRadius: '100px',
+            background: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            color: '#34d399',
+            fontSize: '11px',
+            fontWeight: 700,
+          }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399' }} />
             <span>FastAPI + YOLO Live</span>
           </div>
 
-          {/* Theme Toggle Button */}
-          {toggleTheme && (
-            <button
-              onClick={toggleTheme}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:text-white hover:bg-white/10 transition-colors"
-              title="Toggle Light/Dark Theme"
-            >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-          )}
-
-          {/* Primary CTA Button */}
+          {/* Launch Workspace CTA */}
           {activePage !== 'translator' && (
             <button
               onClick={() => setActivePage('translator')}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 text-slate-950 font-bold text-xs shadow-lg shadow-orange-500/20 hover:shadow-orange-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all"
+              style={{
+                padding: '8px 18px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)',
+                color: '#0c0d14',
+                fontWeight: 900,
+                fontSize: '12px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 4px 14px rgba(234, 88, 12, 0.25)',
+                transition: 'all 0.15s ease',
+              }}
             >
               Launch Workspace →
             </button>
           )}
         </div>
 
-        {/* Mobile Hamburger Menu Toggle */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden p-2 rounded-lg bg-white/5 border border-white/10 text-slate-300"
-        >
-          {mobileMenuOpen ? '✕' : '☰'}
-        </button>
       </div>
-
-      {/* Mobile Drawer Navigation */}
-      {mobileMenuOpen && (
-        <div className="md:hidden px-4 pt-2 pb-4 border-t border-white/10 bg-[#0c0d14]/95 backdrop-blur-xl flex flex-col gap-2">
-          <button
-            onClick={() => { setActivePage('landing'); setMobileMenuOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-semibold ${
-              activePage === 'landing' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-slate-300'
-            }`}
-          >
-            Home
-          </button>
-          <button
-            onClick={() => { setActivePage('translator'); setMobileMenuOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-semibold ${
-              activePage === 'translator' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-slate-300'
-            }`}
-          >
-            AI Workspace
-          </button>
-          <button
-            onClick={() => { setActivePage('dataset'); setMobileMenuOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-semibold ${
-              activePage === 'dataset' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-slate-300'
-            }`}
-          >
-            Dataset Studio
-          </button>
-          <button
-            onClick={() => { setActivePage('memory'); setMobileMenuOpen(false); }}
-            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-semibold ${
-              activePage === 'memory' ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30' : 'text-slate-300'
-            }`}
-          >
-            Memory Studio
-          </button>
-        </div>
-      )}
     </header>
   )
 }

@@ -10,164 +10,351 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
   }
 
   return (
-    <div className="w-full bg-[#0b0c14] text-slate-100 overflow-x-hidden">
+    <div style={{
+      width: '100%',
+      minHeight: '100vh',
+      background: 'var(--bg-primary)',
+      color: 'var(--text-primary)',
+      fontFamily: 'Outfit, Inter, sans-serif',
+      overflowX: 'hidden',
+    }}>
       
       {/* ── 1. HERO SECTION ────────────────────────────────────────────────── */}
-      <section className="relative pt-12 pb-20 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        
-        {/* Glow ambient background accents */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-gradient-to-tr from-amber-600/20 via-orange-500/20 to-purple-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+      <section style={{
+        position: 'relative',
+        paddingTop: '60px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+      }}>
+        {/* Ambient Glow Background Accent */}
+        <div style={{
+          position: 'absolute',
+          top: '25%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '600px',
+          height: '350px',
+          background: 'radial-gradient(circle, rgba(234, 88, 12, 0.18) 0%, rgba(139, 92, 246, 0.08) 60%, transparent 100%)',
+          filter: 'blur(90px)',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+        }} />
 
-        <div className="text-center max-w-4xl mx-auto relative z-10">
-          
+        <div style={{
+          textAlign: 'center',
+          maxWidth: '900px',
+          margin: '0 auto',
+          position: 'relative',
+          zIndex: 10,
+        }}>
           {/* Top Badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-6 shadow-lg shadow-amber-500/10 fade-up">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 16px',
+            borderRadius: '100px',
+            background: 'rgba(234, 88, 12, 0.12)',
+            border: '1px solid rgba(234, 88, 12, 0.3)',
+            color: '#f97316',
+            fontSize: '11px',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            marginBottom: '24px',
+            boxShadow: '0 4px 20px rgba(234, 88, 12, 0.15)',
+          }}>
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ea580c', display: 'inline-block' }} />
             <span>Next-Gen Epigraphic AI • YOLO v8 + Gemini 3.1</span>
           </div>
 
           {/* Main Headline */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-extrabold font-heading tracking-tight leading-[1.1] mb-6 text-white">
-            Decode 2,000 Years of <br className="hidden sm:inline" />
-            <span className="bg-gradient-to-r from-orange-400 via-amber-400 to-yellow-300 bg-clip-text text-transparent">
+          <h1 style={{
+            fontSize: 'clamp(2.5rem, 5vw, 4.5rem)',
+            fontWeight: 900,
+            lineHeight: 1.1,
+            letterSpacing: '-0.03em',
+            color: '#ffffff',
+            marginBottom: '24px',
+          }}>
+            Decode 2,000 Years of <br />
+            <span className="gradient-text-terracotta">
               Tamil Inscriptions
             </span> in Seconds
           </h1>
 
           {/* Subheadline */}
-          <p className="text-lg sm:text-xl text-slate-300 font-normal leading-relaxed max-w-2xl mx-auto mb-10">
-            An advanced SaaS epigraphy platform combining smart-tiled computer vision with epigraphic LLMs to decipher ancient Tamil stone carvings, copper plates, and palm-leaf manuscripts.
+          <p style={{
+            fontSize: '1.15rem',
+            color: 'var(--text-secondary)',
+            lineHeight: 1.6,
+            maxWidth: '680px',
+            margin: '0 auto 40px auto',
+          }}>
+            An enterprise epigraphy SaaS platform combining smart-tiled computer vision with epigraphic LLMs to decipher ancient Tamil stone carvings, copper plates, and palm-leaf manuscripts.
           </p>
 
-          {/* CTA Group */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
+          {/* CTA Buttons Group */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '16px',
+            flexWrap: 'wrap',
+            marginBottom: '56px',
+          }}>
             <button
               onClick={onLaunchWorkspace}
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 text-slate-950 font-bold text-base shadow-xl shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-[1.03] active:scale-[0.98] transition-all flex items-center justify-center gap-3"
+              style={{
+                padding: '16px 36px',
+                borderRadius: '14px',
+                background: 'linear-gradient(135deg, #ea580c 0%, #f97316 50%, #eab308 100%)',
+                color: '#0c0d14',
+                fontWeight: 800,
+                fontSize: '15px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 8px 30px rgba(234, 88, 12, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)' }}
             >
               <span>Translate an Inscription</span>
-              <span className="text-lg">→</span>
+              <span style={{ fontSize: '18px' }}>→</span>
             </button>
 
             <a
               href="#interactive-demo"
-              className="w-full sm:w-auto px-8 py-4 rounded-xl bg-white/5 border border-white/15 text-slate-200 font-semibold text-base hover:bg-white/10 hover:border-white/30 transition-all flex items-center justify-center gap-2"
+              style={{
+                padding: '16px 32px',
+                borderRadius: '14px',
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid var(--border-light)',
+                color: '#ffffff',
+                fontWeight: 700,
+                fontSize: '15px',
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)' }}
             >
-              <span>Try Sample Presets</span>
-              <span className="text-amber-400">⚡</span>
+              <span>Try Live Preset Presets</span>
+              <span style={{ color: '#eab308' }}>⚡</span>
             </a>
           </div>
 
-          {/* Hero Visual Before/After Card Showcase */}
-          <div className="relative mx-auto rounded-2xl border border-white/15 bg-gradient-to-b from-white/10 to-white/5 p-3 sm:p-4 shadow-2xl backdrop-blur-2xl max-w-4xl overflow-hidden group">
-            <div className="relative rounded-xl overflow-hidden bg-[#090a10] border border-white/10 aspect-[16/9] sm:aspect-[21/9]">
-              
-              {/* Background Sample Image */}
+          {/* Hero Visual Before/After Showcase */}
+          <div style={{
+            position: 'relative',
+            margin: '0 auto',
+            borderRadius: '20px',
+            border: '1px solid var(--border-light)',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)',
+            padding: '16px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+            maxWidth: '960px',
+            overflow: 'hidden',
+          }}>
+            <div style={{
+              position: 'relative',
+              borderRadius: '14px',
+              overflow: 'hidden',
+              background: '#090a10',
+              border: '1px solid var(--border)',
+              aspectRatio: '21/9',
+              minHeight: '260px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
               <img
                 src="https://images.unsplash.com/photo-1600100397608-f010e423b971?q=80&w=1200&auto=format&fit=crop"
                 alt="Brihadisvara Temple Wall Inscription"
-                className="w-full h-full object-cover opacity-50 group-hover:scale-105 transition-transform duration-700"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  opacity: 0.45,
+                }}
               />
 
               {/* Bounding Box Visual Overlay Effect */}
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0c0d14] via-black/40 to-transparent flex flex-col justify-between p-4 sm:p-6">
-                
-                {/* Floating AI Status Badges */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-black/70 border border-emerald-500/40 text-emerald-400 text-xs font-mono font-bold backdrop-blur-md">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'linear-gradient(0deg, #0c0d14 0%, rgba(0,0,0,0.4) 60%, transparent 100%)',
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '4px 12px', borderRadius: '6px',
+                    background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(16, 185, 129, 0.4)',
+                    color: '#34d399', fontSize: '11px', fontWeight: 700, fontFamily: 'monospace',
+                  }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#34d399' }} />
                     <span>YOLO v8 Tiled Boxes: 12 Detected</span>
                   </div>
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-mono font-bold backdrop-blur-md">
+                  <div style={{
+                    padding: '4px 12px', borderRadius: '6px',
+                    background: 'rgba(139, 92, 246, 0.2)', border: '1px solid rgba(139, 92, 246, 0.4)',
+                    color: '#c084fc', fontSize: '11px', fontWeight: 700, fontFamily: 'monospace',
+                  }}>
                     <span>Gemini 3.1 Lite Epigraphic AI</span>
                   </div>
                 </div>
 
-                {/* Live Translation Output Overlay */}
-                <div className="bg-[#121422]/90 border border-amber-500/30 rounded-xl p-4 sm:p-5 backdrop-blur-xl text-left shadow-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider">Decoded Script Result</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">Later Chola Dynasty (~1010 CE)</span>
+                <div style={{
+                  background: 'rgba(18, 20, 34, 0.92)',
+                  border: '1px solid rgba(234, 88, 12, 0.35)',
+                  borderRadius: '14px',
+                  padding: '16px 20px',
+                  textAlign: 'left',
+                  backdropFilter: 'blur(12px)',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      Decoded Inscription Script Result
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 600 }}>Later Chola Dynasty (~1010 CE)</span>
                   </div>
-                  <div className="tamil-text text-xl sm:text-2xl font-bold text-white mb-1">
+                  <div className="tamil-text" style={{ fontSize: '24px', fontWeight: 700, color: '#ffffff', marginBottom: '4px' }}>
                     ஸ்ரீ ராஜராஜ தேவர்க்கு யாண்டு ங-வது
                   </div>
-                  <div className="text-xs sm:text-sm text-slate-300 italic font-sans">
+                  <div style={{ fontSize: '13px', color: 'var(--text-secondary)', fontStyle: 'italic' }}>
                     "In the 3rd regnal year of King Sri Raja Raja Chola I..."
                   </div>
                 </div>
-
               </div>
-
             </div>
           </div>
 
           {/* Trust Stat Counter Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-16 pt-8 border-t border-white/10 text-center">
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+            gap: '24px',
+            marginTop: '64px',
+            paddingTop: '32px',
+            borderTop: '1px solid var(--border)',
+            textAlign: 'center',
+          }}>
             <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white font-heading">10,000+</div>
-              <div className="text-xs text-slate-400 font-medium">Inscriptions Decoded</div>
+              <div style={{ fontSize: '32px', fontWeight: 900, color: '#ffffff' }}>10,000+</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '2px' }}>Inscriptions Decoded</div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-amber-400 font-heading">98.4%</div>
-              <div className="text-xs text-slate-400 font-medium">OCR Recognition Accuracy</div>
+              <div style={{ fontSize: '32px', fontWeight: 900, color: '#f97316' }}>98.4%</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '2px' }}>OCR Recognition Accuracy</div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white font-heading">4+ Eras</div>
-              <div className="text-xs text-slate-400 font-medium">Brahmi to Chola Tamil</div>
+              <div style={{ fontSize: '32px', fontWeight: 900, color: '#ffffff' }}>4+ Eras</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '2px' }}>Brahmi to Chola Tamil</div>
             </div>
             <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-400 font-heading">&lt; 0.3s</div>
-              <div className="text-xs text-slate-400 font-medium">Sub-Second AI Latency</div>
+              <div style={{ fontSize: '32px', fontWeight: 900, color: '#34d399' }}>&lt; 0.3s</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 600, marginTop: '2px' }}>Sub-Second AI Latency</div>
             </div>
           </div>
-
         </div>
-
       </section>
 
       {/* ── 2. LIVE INTERACTIVE DEMO PRESETS ───────────────────────────────── */}
-      <section id="interactive-demo" className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10">
-        <div className="text-center max-w-3xl mx-auto mb-12">
-          <h2 className="text-3xl sm:text-4xl font-extrabold font-heading text-white mb-4">
-            Try Sample Inscriptions <span className="text-amber-400">Instantly</span>
+      <section id="interactive-demo" style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 48px auto' }}>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', marginBottom: '12px' }}>
+            Try Sample Inscriptions <span style={{ color: '#f97316' }}>Instantly</span>
           </h2>
-          <p className="text-slate-400 text-sm sm:text-base">
+          <p style={{ color: 'var(--text-secondary)', fontSize: '15px' }}>
             Click any historical sample below to load it into the live AI translator workspace without uploading a file.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+          gap: '24px',
+        }}>
           {SAMPLE_INSCRIPTIONS.map((sample) => (
             <div
               key={sample.id}
               onClick={() => onSelectSample(sample)}
-              className="glass-card cursor-pointer group overflow-hidden flex flex-col justify-between p-4 hover:border-amber-500/50 transition-all"
+              className="glass-card"
+              style={{
+                cursor: 'pointer',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                padding: '18px',
+              }}
             >
               <div>
-                <div className="relative h-40 rounded-lg overflow-hidden mb-4 bg-black">
+                <div style={{
+                  position: 'relative',
+                  height: '160px',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  marginBottom: '16px',
+                  background: '#000',
+                }}>
                   <img
                     src={sample.image}
                     alt={sample.title}
-                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
-                  <div className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/80 border border-amber-500/40 text-amber-300 text-[10px] font-bold">
+                  <div style={{
+                    position: 'absolute', top: '8px', right: '8px',
+                    padding: '3px 8px', borderRadius: '4px',
+                    background: 'rgba(0,0,0,0.85)', border: '1px solid rgba(234,88,12,0.4)',
+                    color: '#fde047', fontSize: '10px', fontWeight: 700,
+                  }}>
                     {sample.era}
                   </div>
                 </div>
-                <h3 className="font-heading font-bold text-white text-base group-hover:text-amber-400 transition-colors line-clamp-1">
+
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>
                   {sample.title}
                 </h3>
-                <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
                   {sample.description}
                 </p>
               </div>
 
-              <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-amber-400 group-hover:translate-x-1 transition-transform">
+              <div style={{
+                marginTop: '16px',
+                paddingTop: '12px',
+                borderTop: '1px solid var(--border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}>
+                <span style={{ fontSize: '12px', fontWeight: 700, color: '#f97316' }}>
                   Test Live AI →
                 </span>
-                <span className="text-[10px] text-slate-500">{sample.location}</span>
+                <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{sample.location}</span>
               </div>
             </div>
           ))}
@@ -175,125 +362,149 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
       </section>
 
       {/* ── 3. HOW IT WORKS ─────────────────────────────────────────────────── */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10 bg-gradient-to-b from-white/[0.02] to-transparent">
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <span className="text-xs font-bold uppercase tracking-wider text-orange-400">Simple 3-Step Pipeline</span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold font-heading text-white mt-2">
+      <section style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+        background: 'linear-gradient(180deg, rgba(255,255,255,0.015) 0%, transparent 100%)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 56px auto' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ea580c' }}>
+            Simple 3-Step Pipeline
+          </span>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
             How The AI Translation Engine Works
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-          
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '24px',
+        }}>
           {/* Step 1 */}
-          <div className="glass-card p-6 relative">
-            <div className="w-12 h-12 rounded-xl bg-orange-500/20 border border-orange-500/40 text-orange-400 font-extrabold font-heading text-xl flex items-center justify-center mb-6">
+          <div className="glass-card" style={{ padding: '28px' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: 'rgba(234, 88, 12, 0.15)', border: '1px solid rgba(234, 88, 12, 0.3)',
+              color: '#ea580c', fontWeight: 900, fontSize: '20px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px',
+            }}>
               01
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 font-heading">Capture & Upload</h3>
-            <p className="text-slate-400 text-sm leading-relaxed">
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginBottom: '8px' }}>Capture & Upload</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               Upload a photograph of stone temple inscriptions, rock cut caves, copper plates, or palm-leaf manuscripts directly from your smartphone or desktop.
             </p>
           </div>
 
           {/* Step 2 */}
-          <div className="glass-card p-6 relative">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 font-extrabold font-heading text-xl flex items-center justify-center mb-6">
+          <div className="glass-card" style={{ padding: '28px' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.3)',
+              color: '#eab308', fontWeight: 900, fontSize: '20px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px',
+            }}>
               02
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 font-heading">Smart-Tiled YOLO OCR</h3>
-            <p className="text-slate-400 text-sm leading-relaxed">
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginBottom: '8px' }}>Smart-Tiled YOLO OCR</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               Our YOLO v8 vision model slices high-res images into intelligent tiles, isolating individual characters and generating interactive bounding box coordinates.
             </p>
           </div>
 
           {/* Step 3 */}
-          <div className="glass-card p-6 relative">
-            <div className="w-12 h-12 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-400 font-extrabold font-heading text-xl flex items-center justify-center mb-6">
+          <div className="glass-card" style={{ padding: '28px' }}>
+            <div style={{
+              width: '48px', height: '48px', borderRadius: '12px',
+              background: 'rgba(139, 92, 246, 0.15)', border: '1px solid rgba(139, 92, 246, 0.3)',
+              color: '#a855f7', fontWeight: 900, fontSize: '20px',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px',
+            }}>
               03
             </div>
-            <h3 className="text-xl font-bold text-white mb-2 font-heading">Epigraphic AI Reconstruction</h3>
-            <p className="text-slate-400 text-sm leading-relaxed">
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginBottom: '8px' }}>Epigraphic AI Reconstruction</h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
               Gemini 3.1 & Beam-Search NLP analyze context, restore weathered or missing characters, and output modern Tamil script with full historical meanings.
             </p>
           </div>
-
         </div>
       </section>
 
       {/* ── 4. FEATURES MATRIX ──────────────────────────────────────────────── */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10">
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Enterprise Capabilities</span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold font-heading text-white mt-2">
+      <section style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 56px auto' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#eab308' }}>
+            Enterprise Capabilities
+          </span>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
             Built for Researchers, Students & Heritage Bodies
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">📜</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Multi-Era Recognition</h3>
-            <p className="text-slate-400 text-sm">
-              Supports Tamil Brahmi (3rd C. BCE), Vatteluttu, Grantha, and Middle/Later Chola & Pandyan epigraphic scripts.
-            </p>
-          </div>
-
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">✨</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Missing Character Restoration</h3>
-            <p className="text-slate-400 text-sm">
-              Context-aware LLM detects erosion and stone breaks to automatically reconstruct missing middle characters.
-            </p>
-          </div>
-
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">🎯</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Interactive Bounding Boxes</h3>
-            <p className="text-slate-400 text-sm">
-              Click any bounding box on the original image canvas to view alternative readings or manually correct classified characters.
-            </p>
-          </div>
-
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">🔍</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Top 10 NLP Combinations</h3>
-            <p className="text-slate-400 text-sm">
-              Ranks the top 10 most probable grammatical variations generated by mathematical bigram beam search.
-            </p>
-          </div>
-
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">📱</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Mobile Camera Optimized</h3>
-            <p className="text-slate-400 text-sm">
-              Photograph stone inscriptions directly on-site at temples with responsive mobile upload and region cropping.
-            </p>
-          </div>
-
-          <div className="glass-card p-6">
-            <div className="text-2xl mb-3">🧠</div>
-            <h3 className="text-lg font-bold text-white mb-2 font-heading">Corrections Memory Engine</h3>
-            <p className="text-slate-400 text-sm">
-              User corrections are persisted locally and sent to the active backend memory store to continuously improve accuracy.
-            </p>
-          </div>
-
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '24px',
+        }}>
+          {[
+            { icon: '📜', title: 'Multi-Era Recognition', desc: 'Supports Tamil Brahmi (3rd C. BCE), Vatteluttu, Grantha, and Middle/Later Chola & Pandyan epigraphic scripts.' },
+            { icon: '✨', title: 'Missing Character Restoration', desc: 'Context-aware LLM detects erosion and stone breaks to automatically reconstruct missing middle characters.' },
+            { icon: '🎯', title: 'Interactive Bounding Boxes', desc: 'Click any bounding box on the original image canvas to view alternative readings or manually correct classified characters.' },
+            { icon: '🔍', title: 'Top 10 NLP Combinations', desc: 'Ranks the top 10 most probable grammatical variations generated by mathematical bigram beam search.' },
+            { icon: '📱', title: 'Mobile Camera Optimized', desc: 'Photograph stone inscriptions directly on-site at temples with responsive mobile upload and region cropping.' },
+            { icon: '🧠', title: 'Corrections Memory Engine', desc: 'User corrections are persisted locally and sent to the active backend memory store to continuously improve accuracy.' },
+          ].map((feat, i) => (
+            <div key={i} className="glass-card" style={{ padding: '24px' }}>
+              <div style={{ fontSize: '24px', marginBottom: '12px' }}>{feat.icon}</div>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff', marginBottom: '6px' }}>{feat.title}</h3>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{feat.desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* ── 5. USE CASES TABS ───────────────────────────────────────────────── */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10 bg-gradient-to-b from-white/[0.01] to-transparent">
-        <div className="text-center max-w-3xl mx-auto mb-10">
-          <span className="text-xs font-bold uppercase tracking-wider text-orange-400">Tailored SaaS Solutions</span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold font-heading text-white mt-2">
+      <section style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 40px auto' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#ea580c' }}>
+            Tailored SaaS Solutions
+          </span>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
             Who Uses Akshara Epigraphy AI?
           </h2>
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-10">
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          marginBottom: '40px',
+        }}>
           {[
             { id: 'historians', label: 'Historians & Archeologists' },
             { id: 'students', label: 'University Students & Scholars' },
@@ -303,11 +514,17 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-lg shadow-orange-500/20'
-                  : 'bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10'
-              }`}
+              style={{
+                padding: '10px 20px',
+                borderRadius: '12px',
+                fontWeight: 700,
+                fontSize: '13px',
+                cursor: 'pointer',
+                border: activeTab === tab.id ? 'none' : '1px solid var(--border)',
+                background: activeTab === tab.id ? 'linear-gradient(135deg, #ea580c 0%, #eab308 100%)' : 'rgba(255,255,255,0.04)',
+                color: activeTab === tab.id ? '#0c0d14' : 'var(--text-secondary)',
+                transition: 'all 0.2s ease',
+              }}
             >
               {tab.label}
             </button>
@@ -315,35 +532,35 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
         </div>
 
         {/* Tab Content Cards */}
-        <div className="glass-card p-8 max-w-4xl mx-auto text-center border-amber-500/30">
+        <div className="glass-card" style={{ padding: '36px', maxWidth: '800px', margin: '0 auto', textAlign: 'center' }}>
           {activeTab === 'historians' && (
             <div>
-              <h3 className="text-2xl font-bold text-white mb-3 font-heading">Accelerate Primary Source Research</h3>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+              <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', marginBottom: '10px' }}>Accelerate Primary Source Research</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                 Rapidly transcribe high-resolution field photos into modern Tamil script. Export character coordinates, confidence metrics, and historical metadata directly into academic research papers.
               </p>
             </div>
           )}
           {activeTab === 'students' && (
             <div>
-              <h3 className="text-2xl font-bold text-white mb-3 font-heading">Learn Ancient Tamil Script Eras</h3>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+              <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', marginBottom: '10px' }}>Learn Ancient Tamil Script Eras</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                 Compare ancient glyph shapes side-by-side with modern Tamil equivalents. Gain instant grammatical breakdowns and dictionary meanings for classical literature and epigraphy studies.
               </p>
             </div>
           )}
           {activeTab === 'tourists' && (
             <div>
-              <h3 className="text-2xl font-bold text-white mb-3 font-heading">Unlock Temple Wall Stories On-Site</h3>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+              <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', marginBottom: '10px' }}>Unlock Temple Wall Stories On-Site</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                 Point your smartphone camera at temple carvings at Tanjore, Madurai, or Kanchipuram to read the centuries-old royal proclamations and donor inscriptions right where you stand.
               </p>
             </div>
           )}
           {activeTab === 'museums' && (
             <div>
-              <h3 className="text-2xl font-bold text-white mb-3 font-heading">Digitize & Archive Artifact Collections</h3>
-              <p className="text-slate-300 text-sm sm:text-base leading-relaxed max-w-2xl mx-auto">
+              <h3 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', marginBottom: '10px' }}>Digitize & Archive Artifact Collections</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
                 Automate bulk cataloging of copper plates, stone slabs, and palm-leaf manuscripts with custom dataset studio tools and API integration.
               </p>
             </div>
@@ -352,101 +569,142 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
       </section>
 
       {/* ── 6. PRICING TIERS ────────────────────────────────────────────────── */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto border-t border-white/10">
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Flexible SaaS Pricing</span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold font-heading text-white mt-2">
+      <section style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '1280px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto 56px auto' }}>
+          <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#eab308' }}>
+            Flexible SaaS Pricing
+          </span>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff', marginTop: '8px' }}>
             Plans for Every Level of Research
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: '32px',
+        }}>
           {/* Free Tier */}
-          <div className="glass-card p-6 flex flex-col justify-between">
+          <div className="glass-card" style={{ padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Scholar / Community</div>
-              <div className="text-4xl font-extrabold text-white font-heading mb-1">$0 <span className="text-xs text-slate-400 font-normal">/ forever</span></div>
-              <p className="text-xs text-slate-400 mb-6">Ideal for casual users, students & temple tourists.</p>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Scholar / Community</div>
+              <div style={{ fontSize: '36px', fontWeight: 900, color: '#ffffff', marginBottom: '4px' }}>$0 <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400 }}>/ forever</span></div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '24px' }}>Ideal for casual users, students & temple tourists.</p>
               
-              <ul className="space-y-3 text-xs text-slate-300 mb-6">
-                <li className="flex items-center gap-2">✓ 25 AI Inscription Translations / Mo</li>
-                <li className="flex items-center gap-2">✓ YOLO v8 Smart-Tiled OCR</li>
-                <li className="flex items-center gap-2">✓ Top 10 Beam Search Variations</li>
-                <li className="flex items-center gap-2">✓ Mobile Camera Upload Support</li>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '32px' }}>
+                <li>✓ 25 AI Inscription Translations / Mo</li>
+                <li>✓ YOLO v8 Smart-Tiled OCR</li>
+                <li>✓ Top 10 Beam Search Variations</li>
+                <li>✓ Mobile Camera Upload Support</li>
               </ul>
             </div>
 
             <button
               onClick={onLaunchWorkspace}
-              className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors"
+              style={{
+                width: '100%', padding: '12px', borderRadius: '10px',
+                background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
+                color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+              }}
             >
               Get Started Free
             </button>
           </div>
 
           {/* Pro Tier (Featured) */}
-          <div className="glass-card p-6 flex flex-col justify-between border-amber-500/50 bg-gradient-to-b from-amber-500/10 to-transparent relative shadow-xl shadow-amber-500/10">
-            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-amber-500 text-slate-950 text-[10px] font-extrabold uppercase tracking-wider">
+          <div className="glass-card" style={{
+            padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between',
+            border: '1px solid rgba(234, 88, 12, 0.4)', background: 'linear-gradient(180deg, rgba(234,88,12,0.08) 0%, transparent 100%)',
+            position: 'relative',
+          }}>
+            <div style={{
+              position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)',
+              padding: '4px 14px', borderRadius: '100px', background: '#ea580c',
+              color: '#0c0d14', fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em',
+            }}>
               Most Popular
             </div>
 
             <div>
-              <div className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">Epigraphist Pro</div>
-              <div className="text-4xl font-extrabold text-white font-heading mb-1">$29 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-              <p className="text-xs text-slate-400 mb-6">For historians, researchers & active scholars.</p>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Epigraphist Pro</div>
+              <div style={{ fontSize: '36px', fontWeight: 900, color: '#ffffff', marginBottom: '4px' }}>$29 <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400 }}>/ month</span></div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '24px' }}>For historians, researchers & active scholars.</p>
               
-              <ul className="space-y-3 text-xs text-slate-200 mb-6">
-                <li className="flex items-center gap-2 text-amber-300 font-semibold">✓ Unlimited AI Inscription Decodes</li>
-                <li className="flex items-center gap-2">✓ Gemini 3.1 Epigraphic Restorations</li>
-                <li className="flex items-center gap-2">✓ Word-by-Word Grammatical Analysis</li>
-                <li className="flex items-center gap-2">✓ HD Image Upload & Crop Studio</li>
-                <li className="flex items-center gap-2">✓ Export to PDF, Image & TXT</li>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12px', color: 'var(--text-primary)', marginBottom: '32px' }}>
+                <li style={{ color: '#fde047', fontWeight: 700 }}>✓ Unlimited AI Inscription Decodes</li>
+                <li>✓ Gemini 3.1 Epigraphic Restorations</li>
+                <li>✓ Word-by-Word Grammatical Analysis</li>
+                <li>✓ HD Image Upload & Crop Studio</li>
+                <li>✓ Export to PDF, Image & TXT</li>
               </ul>
             </div>
 
             <button
               onClick={onLaunchWorkspace}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:scale-[1.02] text-slate-950 font-extrabold text-xs shadow-lg shadow-orange-500/20 transition-all"
+              style={{
+                width: '100%', padding: '14px', borderRadius: '10px',
+                background: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)', border: 'none',
+                color: '#0c0d14', fontWeight: 900, fontSize: '13px', cursor: 'pointer',
+                boxShadow: '0 4px 20px rgba(234,88,12,0.3)',
+              }}
             >
               Launch Pro Workspace
             </button>
           </div>
 
           {/* Institutional Tier */}
-          <div className="glass-card p-6 flex flex-col justify-between">
+          <div className="glass-card" style={{ padding: '32px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
             <div>
-              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider mb-2">Institutional & Museum</div>
-              <div className="text-4xl font-extrabold text-white font-heading mb-1">$149 <span className="text-xs text-slate-400 font-normal">/ month</span></div>
-              <p className="text-xs text-slate-400 mb-6">For universities, archives & state bodies.</p>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '8px' }}>Institutional & Museum</div>
+              <div style={{ fontSize: '36px', fontWeight: 900, color: '#ffffff', marginBottom: '4px' }}>$149 <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 400 }}>/ month</span></div>
+              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '24px' }}>For universities, archives & state bodies.</p>
               
-              <ul className="space-y-3 text-xs text-slate-300 mb-6">
-                <li className="flex items-center gap-2">✓ Bulk Archive Batch Uploads</li>
-                <li className="flex items-center gap-2">✓ REST API Key Access</li>
-                <li className="flex items-center gap-2">✓ Custom Dataset Studio & Training</li>
-                <li className="flex items-center gap-2">✓ Multi-User Team Workspaces</li>
-                <li className="flex items-center gap-2">✓ Priority Dedicated Server Processing</li>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '32px' }}>
+                <li>✓ Bulk Archive Batch Uploads</li>
+                <li>✓ REST API Key Access</li>
+                <li>✓ Custom Dataset Studio & Training</li>
+                <li>✓ Multi-User Team Workspaces</li>
+                <li>✓ Priority Dedicated Server Processing</li>
               </ul>
             </div>
 
             <button
               onClick={onLaunchWorkspace}
-              className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors"
+              style={{
+                width: '100%', padding: '12px', borderRadius: '10px',
+                background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
+                color: '#ffffff', fontWeight: 700, fontSize: '13px', cursor: 'pointer',
+              }}
             >
               Contact Institutional Sales
             </button>
           </div>
-
         </div>
       </section>
 
       {/* ── 7. FAQ ACCORDION ───────────────────────────────────────────────── */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto border-t border-white/10">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-extrabold font-heading text-white">Frequently Asked Questions</h2>
+      <section style={{
+        paddingTop: '80px',
+        paddingBottom: '80px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+        maxWidth: '800px',
+        margin: '0 auto',
+        borderTop: '1px solid var(--border)',
+      }}>
+        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+          <h2 style={{ fontSize: '2.5rem', fontWeight: 800, color: '#ffffff' }}>Frequently Asked Questions</h2>
         </div>
 
-        <div className="space-y-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {[
             {
               q: 'What script eras are currently supported by the AI model?',
@@ -468,14 +726,15 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
             <div
               key={idx}
               onClick={() => toggleFaq(idx)}
-              className="glass-card p-5 cursor-pointer hover:border-amber-500/40 transition-all"
+              className="glass-card"
+              style={{ padding: '20px', cursor: 'pointer' }}
             >
-              <div className="flex items-center justify-between">
-                <h3 className="font-heading font-bold text-white text-base">{item.q}</h3>
-                <span className="text-amber-400 font-bold text-lg">{openFaq === idx ? '−' : '+'}</span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#ffffff' }}>{item.q}</h3>
+                <span style={{ fontSize: '20px', fontWeight: 700, color: '#f97316' }}>{openFaq === idx ? '−' : '+'}</span>
               </div>
               {openFaq === idx && (
-                <p className="mt-3 text-slate-300 text-sm leading-relaxed border-t border-white/10 pt-3">
+                <p style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6, borderTop: '1px solid var(--border)', paddingTop: '12px' }}>
                   {item.a}
                 </p>
               )}
@@ -485,29 +744,40 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
       </section>
 
       {/* ── 8. FOOTER ──────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/10 bg-[#07080f] py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-          
+      <footer style={{
+        borderTop: '1px solid var(--border)',
+        background: '#07080f',
+        paddingTop: '48px',
+        paddingBottom: '48px',
+        paddingLeft: '24px',
+        paddingRight: '24px',
+      }}>
+        <div style={{
+          maxWidth: '1280px',
+          margin: '0 auto',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '24px',
+        }}>
           <div>
-            <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
-              <span className="tamil-text text-xl font-bold text-amber-400">அ</span>
-              <span className="font-heading font-bold text-white text-lg">AKSHARA EPIGRAPHY AI</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <span className="tamil-text" style={{ fontSize: '20px', fontWeight: 700, color: '#f97316' }}>அ</span>
+              <span style={{ fontSize: '16px', fontWeight: 800, color: '#ffffff', letterSpacing: '0.04em' }}>AKSHARA EPIGRAPHY AI</span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
               Deciphering Tamil Cultural Heritage through Computer Vision & Artificial Intelligence.
             </p>
           </div>
 
-          <div className="flex items-center gap-6 text-xs text-slate-400">
-            <span className="px-2 py-1 rounded bg-white/5 border border-white/10 text-slate-300 font-mono">
-              FastAPI 0.111 • YOLOv8 • PyTorch • Gemini 3.1
-            </span>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', padding: '6px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+            FastAPI 0.111 • YOLOv8 • PyTorch • Gemini 3.1
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
             © {new Date().getFullYear()} Akshara AI Epigraphy Engine. All rights reserved.
           </div>
-
         </div>
       </footer>
 
