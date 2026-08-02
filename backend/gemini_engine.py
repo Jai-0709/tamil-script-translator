@@ -85,9 +85,11 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
     }
 
     models_to_try = [
-        os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip(),
-        "gemini-1.5-flash",
-        "gemini-1.5-pro"
+        os.environ.get("GEMINI_MODEL", "gemini-flash-latest").strip(),
+        "gemini-flash-latest",
+        "gemini-flash-lite-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-2.0-flash",
     ]
     models_to_try = list(dict.fromkeys(models_to_try))
 
