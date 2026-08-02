@@ -79,7 +79,6 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
             }
         ],
         "generationConfig": {
-            "response_mime_type": "application/json",
             "temperature": 0.1
         }
     }
@@ -111,7 +110,12 @@ def gemini_epigraphic_refine(raw_characters: List[str]) -> Optional[Dict]:
                 continue
 
             text_content = candidates[0]["content"]["parts"][0]["text"]
-            result = json.loads(text_content)
+            import re
+            json_match = re.search(r'\{.*\}', text_content, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group(0))
+            else:
+                result = json.loads(text_content)
             print(f"[GEMINI] Successfully received epigraphic refinement from {model_name}: {result.get('full_sentence')}")
             return result
         except urllib.error.HTTPError as e:
