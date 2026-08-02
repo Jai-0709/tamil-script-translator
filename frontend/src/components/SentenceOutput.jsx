@@ -16,6 +16,7 @@ export default function SentenceOutput({
   const [copiedAi, setCopiedAi]      = useState(false)
   const [copiedAll, setCopiedAll]    = useState(false)
   const [showRoman, setShowRoman]    = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(false)
 
   const detectedText  = rawSentence || fullSentence
   const aiText        = aiRefinedSentence
@@ -47,10 +48,11 @@ export default function SentenceOutput({
       borderRadius: 12,
       background: '#12141f',
       border: '1px solid var(--border)',
-      padding: 14,
+      padding: isCollapsed ? '8px 14px' : 14,
       display: 'flex',
       flexDirection: 'column',
-      gap: 12,
+      gap: isCollapsed ? 0 : 12,
+      transition: 'all 0.2s ease',
     }}>
       {/* Top Header Row */}
       <div style={{
@@ -59,18 +61,42 @@ export default function SentenceOutput({
         justifyContent: 'space-between',
         gap: 8,
       }}>
-        <span style={{
-          fontSize: 11,
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.08em',
-          color: 'var(--text-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6
-        }}>
-          📜 Inscription Translation & Epigraphic AI Analyzer
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            📜 Inscription Translation & Epigraphic AI Analyzer
+          </span>
+
+          {/* Minimize / Expand Toggle Arrow Button */}
+          <button
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            style={{
+              background: isCollapsed ? 'rgba(249, 115, 22, 0.15)' : 'rgba(255, 255, 255, 0.06)',
+              border: `1px solid ${isCollapsed ? 'rgba(249, 115, 22, 0.4)' : 'var(--border)'}`,
+              color: isCollapsed ? '#f97316' : 'var(--text-primary)',
+              borderRadius: 6,
+              padding: '3px 10px',
+              fontSize: 10,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 0.15s ease',
+            }}
+            title={isCollapsed ? "Expand Panel to see translation details" : "Minimize Panel to see character breakdown clearly"}
+          >
+            {isCollapsed ? '▲ Expand Panel' : '▼ Minimize Panel'}
+          </button>
+        </div>
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -138,13 +164,15 @@ export default function SentenceOutput({
           >
             {copied ? '✓ Copied' : 'Copy Output'}
           </button>
-        </div>
       </div>
 
-      {/* ── Area 1: Detected Inscription Glyphs (Vision Model) ───────────────── */}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 4,
-      }}>
+      {/* ── Collapsible Body Content ─────────────────────────────────────────── */}
+      {!isCollapsed && (
+        <>
+          {/* ── Area 1: Detected Inscription Glyphs (Vision Model) ───────────────── */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             🔤 Detected Character Sequence (Vision Model)
@@ -409,6 +437,8 @@ export default function SentenceOutput({
             })}
           </div>
         </div>
+      )}
+        </>
       )}
     </div>
   )
