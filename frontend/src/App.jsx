@@ -870,6 +870,9 @@ export default function App() {
           }}>
             <SentenceOutput
               fullSentence={effectiveSentence}
+              rawSentence={apiResponse?.raw_sentence || buildSentence(words)}
+              aiRefinedSentence={apiResponse?.ai_refined_sentence || null}
+              aiMeaning={apiResponse?.ai_meaning || null}
               romanSentence={apiResponse?.roman_sentence || ""}
               alternativeSentences={effectiveAlternatives}
               alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}

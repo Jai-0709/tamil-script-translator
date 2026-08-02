@@ -2,21 +2,27 @@ import { useState } from 'react'
 
 export default function SentenceOutput({
   fullSentence,
+  rawSentence,
+  aiRefinedSentence,
+  aiMeaning,
   romanSentence,
   alternativeSentences = [],
   alternativeRomanSentences = []
 }) {
   const [copied, setCopied]          = useState(false)
+  const [copiedAi, setCopiedAi]      = useState(false)
   const [copiedAll, setCopiedAll]    = useState(false)
   const [showRoman, setShowRoman]    = useState(false)
 
-  const activeText = showRoman ? (romanSentence || fullSentence) : fullSentence
+  const detectedText  = rawSentence || fullSentence
+  const aiText        = aiRefinedSentence
+  const activeText    = showRoman ? (romanSentence || aiText || detectedText) : (aiText || detectedText)
 
-  function copy() {
-    if (!activeText) return
-    navigator.clipboard.writeText(activeText).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+  function copy(textToCopy, setCopyState) {
+    if (!textToCopy) return
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      setCopyState(true)
+      setTimeout(() => setCopyState(false), 2000)
     })
   }
 
@@ -35,13 +41,13 @@ export default function SentenceOutput({
 
   return (
     <div style={{
-      borderRadius: 10,
+      borderRadius: 12,
       background: '#12141f',
       border: '1px solid var(--border)',
       padding: 14,
       display: 'flex',
       flexDirection: 'column',
-      gap: 10,
+      gap: 12,
     }}>
       {/* Top Header Row */}
       <div style={{
@@ -56,13 +62,15 @@ export default function SentenceOutput({
           textTransform: 'uppercase',
           letterSpacing: '0.08em',
           color: 'var(--text-secondary)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6
         }}>
-          Full Inscription Translation
+          📜 Inscription Translation & AI Refinement
         </span>
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Script Segmented Control */}
           {romanSentence && (
             <div style={{
               display: 'flex',
@@ -107,9 +115,8 @@ export default function SentenceOutput({
             </div>
           )}
 
-          {/* Copy Button */}
           <button
-            onClick={copy}
+            onClick={() => copy(activeText, setCopied)}
             disabled={!activeText}
             style={{
               display: 'flex',
@@ -131,33 +138,90 @@ export default function SentenceOutput({
         </div>
       </div>
 
-      {/* Main Translation Inset Box */}
+      {/* ── Area 1: Detected Inscription Glyphs (Vision Model) ───────────────── */}
       <div style={{
-        background: '#090a10',
-        borderRadius: 8,
-        border: '1px solid var(--border)',
-        padding: '10px 14px',
-        maxHeight: 90,
-        overflowY: 'auto',
+        display: 'flex', flexDirection: 'column', gap: 4,
       }}>
-        <p
-          className={showRoman ? '' : 'tamil-text'}
-          style={{
-            fontSize: showRoman ? 14 : 20,
-            fontWeight: 700,
-            color: 'var(--text-primary)',
-            lineHeight: 1.4,
-            wordBreak: 'break-word',
-            fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
-          }}
-        >
-          {activeText || (
-            <span style={{ opacity: 0.3, fontStyle: 'italic', fontSize: 12, fontWeight: 400 }}>
-              No translation generated yet.
-            </span>
-          )}
-        </p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            🔤 Detected Character Sequence (Vision Model)
+          </span>
+        </div>
+        <div style={{
+          background: '#090a10',
+          borderRadius: 8,
+          border: '1px solid var(--border)',
+          padding: '8px 12px',
+          maxHeight: 70,
+          overflowY: 'auto',
+        }}>
+          <p
+            className={showRoman ? '' : 'tamil-text'}
+            style={{
+              fontSize: showRoman ? 13 : 18,
+              fontWeight: 700,
+              color: 'var(--text-primary)',
+              lineHeight: 1.4,
+              wordBreak: 'break-word',
+              fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
+              margin: 0,
+            }}
+          >
+            {detectedText || (
+              <span style={{ opacity: 0.3, fontStyle: 'italic', fontSize: 12, fontWeight: 400 }}>
+                No character detection available.
+              </span>
+            )}
+          </p>
+        </div>
       </div>
+
+      {/* ── Area 2: Final AI Epigraphic Refinement & Word Segmentation ───────── */}
+      {aiText && (
+        <div style={{
+          display: 'flex', flexDirection: 'column', gap: 4,
+          padding: 10, borderRadius: 8,
+          background: 'rgba(168, 85, 247, 0.06)',
+          border: '1px solid rgba(168, 85, 247, 0.25)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: '#c084fc',
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              display: 'flex', alignItems: 'center', gap: 4
+            }}>
+              ✨ AI Epigraphic Word Segmentation & Refinement (Gemini API)
+            </span>
+            <button
+              onClick={() => copy(aiText, setCopiedAi)}
+              style={{
+                background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)',
+                color: '#e9d5ff', borderRadius: 4, padding: '2px 6px',
+                fontSize: 9, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              {copiedAi ? '✓ Copied' : '📋 Copy AI Text'}
+            </button>
+          </div>
+
+          <div className="tamil-text" style={{
+            fontSize: 20, fontWeight: 700, color: '#f3e8ff',
+            lineHeight: 1.4, wordBreak: 'break-word', marginTop: 2,
+          }}>
+            {aiText}
+          </div>
+
+          {aiMeaning && (
+            <div style={{
+              fontSize: 11, color: '#d8b4fe', fontStyle: 'italic',
+              marginTop: 4, display: 'flex', alignItems: 'center', gap: 4
+            }}>
+              <span>💡 Meaning:</span>
+              <span>{aiMeaning}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Alternative Readings Grid (Top 10 Combinations) */}
       {alternativeSentences.length > 0 && (

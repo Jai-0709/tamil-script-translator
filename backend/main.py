@@ -206,6 +206,9 @@ class TranslateResponse(BaseModel):
     words:          List[WordResult]
     full_sentence:  str
     roman_sentence: str           # ISO-15919 romanized transliteration
+    raw_sentence:   Optional[str] = None
+    ai_refined_sentence: Optional[str] = None
+    ai_meaning:     Optional[str] = None
     alternative_sentences: List[str] = []
     alternative_roman_sentences: List[str] = []
     word_count:     int
@@ -531,9 +534,12 @@ async def translate(
             is_memorized = cls_result.get("is_memorized", False)
         ))
 
-    sentence      = _build_sentence(words)
+    raw_sentence   = _build_sentence(words)
+    sentence       = raw_sentence
     roman_sentence = _to_roman(sentence)
-    line_count    = max((w.line for w in words), default=0)
+    line_count     = max((w.line for w in words), default=0)
+    ai_refined_sentence = None
+    ai_meaning          = None
 
     # Build alternative sentences (guaranteed zero raw commas)
     alternative_sentences = []
@@ -564,7 +570,9 @@ async def translate(
     raw_char_seq = [w.modern_tamil for w in words if w.modern_tamil and w.modern_tamil != "?"]
     gemini_res = gemini_epigraphic_refine(raw_char_seq)
     if gemini_res and "full_sentence" in gemini_res and gemini_res["full_sentence"]:
-        sentence = gemini_res["full_sentence"]
+        ai_refined_sentence = gemini_res["full_sentence"]
+        ai_meaning = gemini_res.get("meaning")
+        sentence = ai_refined_sentence
         roman_sentence = _to_roman(sentence)
         if "alternative_readings" in gemini_res and isinstance(gemini_res["alternative_readings"], list):
             gemini_alts = [s.strip() for s in gemini_res["alternative_readings"] if s and s.strip()]
@@ -576,6 +584,9 @@ async def translate(
         words          = words,
         full_sentence  = sentence,
         roman_sentence = roman_sentence,
+        raw_sentence   = raw_sentence,
+        ai_refined_sentence = ai_refined_sentence,
+        ai_meaning     = ai_meaning,
         alternative_sentences = alternative_sentences,
         alternative_roman_sentences = alternative_roman_sentences,
         word_count     = len(words),
