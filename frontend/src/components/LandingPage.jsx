@@ -178,16 +178,12 @@ export default function LandingPage({ onSelectSample, onLaunchWorkspace }) {
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-              <img
-                src="https://images.unsplash.com/photo-1600100397608-f010e423b971?q=80&w=1200&auto=format&fit=crop"
-                alt="Brihadisvara Temple Wall Inscription"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  opacity: 0.45,
-                }}
-              />
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                background: 'radial-gradient(ellipse at center, #48392c 0%, #2e241c 50%, #0c0d14 100%)',
+                opacity: 0.9,
+              }} />
 
               {/* Bounding Box Visual Overlay Effect */}
               <div style={{
