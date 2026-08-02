@@ -252,36 +252,48 @@ export default function SentenceOutput({
                 maxHeight: 160,
                 overflowY: 'auto',
               }}>
-                {aiWordBreakdown.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(168, 85, 247, 0.12)',
-                      border: '1px solid rgba(168, 85, 247, 0.25)',
-                      borderRadius: 6,
-                      padding: '6px 10px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 2,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span className="tamil-text" style={{ fontSize: 15, fontWeight: 700, color: '#ffffff' }}>
-                        {item.word}
-                      </span>
-                      {item.type && (
-                        <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 4, background: 'rgba(249,115,22,0.2)', color: '#f97316', fontWeight: 600 }}>
-                          {item.type}
+                {aiWordBreakdown.map((item, idx) => {
+                  const isRestored = item.is_restored || (item.type && item.type.toLowerCase().includes('restored'))
+                  return (
+                    <div
+                      key={idx}
+                      style={{
+                        background: isRestored ? 'rgba(234, 179, 8, 0.12)' : 'rgba(168, 85, 247, 0.12)',
+                        border: isRestored ? '1px solid rgba(234, 179, 8, 0.4)' : '1px solid rgba(168, 85, 247, 0.25)',
+                        borderRadius: 8,
+                        padding: '8px 12px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 3,
+                        boxShadow: isRestored ? '0 0 10px rgba(234, 179, 8, 0.15)' : 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+                        <span className="tamil-text" style={{ fontSize: 16, fontWeight: 700, color: isRestored ? '#fef08a' : '#ffffff' }}>
+                          {item.word}
+                        </span>
+                        <span style={{
+                          fontSize: 8,
+                          padding: '2px 6px',
+                          borderRadius: 4,
+                          background: isRestored ? 'rgba(234, 179, 8, 0.25)' : 'rgba(249,115,22,0.2)',
+                          color: isRestored ? '#fde047' : '#f97316',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          {isRestored ? '✨ AI Restored' : (item.type || 'Word')}
+                        </span>
+                      </div>
+                      {item.meaning && (
+                        <span style={{ fontSize: 11, color: isRestored ? '#fef9c3' : '#e9d5ff', lineHeight: 1.3 }}>
+                          {item.meaning}
                         </span>
                       )}
                     </div>
-                    {item.meaning && (
-                      <span style={{ fontSize: 10, color: '#e9d5ff', lineHeight: 1.2 }}>
-                        {item.meaning}
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}

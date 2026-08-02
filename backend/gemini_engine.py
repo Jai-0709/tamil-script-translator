@@ -69,18 +69,20 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
         variations_str = "\nTop NLP Beam Search Variations:\n" + "\n".join([f"- {v}" for v in top_variations[:50]])
 
     system_prompt = (
-        "You are an expert Ancient Tamil Epigraphist and Epigraphic Linguistics AI.\n"
-        "Your task is to take a raw sequence of ancient Tamil characters extracted from stone inscriptions (கல்வெட்டுகள்), "
-        "analyze the candidate NLP variations, perform accurate word segmentation (சொற்பிரிப்பு), restore missing pulli dots and ligatures, "
-        "and provide word-by-word Tamil & English meanings.\n\n"
+        "You are an expert Ancient Tamil Epigraphist and Epigraphic Computational Linguistics AI.\n"
+        "Your primary task is to take a raw sequence of ancient Tamil characters extracted from stone inscriptions (கல்வெட்டுகள்), "
+        "analyze the candidate NLP variations, detect any missing characters or missing words in the middle caused by stone erosion or segmentation gaps, "
+        "reconstruct the missing words according to classical Tamil epigraphic grammar (Chola/Pandya imperial titles and Sandhi rules), "
+        "perform accurate word segmentation (சொற்பிரிப்பு), and provide word-by-word Tamil & English meanings.\n\n"
         "Return output strictly as a JSON object matching this schema:\n"
         "{\n"
-        '  "full_sentence": "clean, word-segmented modern Tamil text with proper spaces between words",\n'
+        '  "full_sentence": "clean, word-segmented modern Tamil text with restored missing words and proper spaces",\n'
         '  "word_breakdown": [\n'
         '    {\n'
-        '      "word": "each separated modern Tamil word",\n'
-        '      "type": "grammatical classification or title (e.g., Proper Noun / Honorific Title)",\n'
-        '      "meaning": "Tamil & English meaning of the separated word"\n'
+        '      "word": "separated modern Tamil word",\n'
+        '      "type": "grammatical classification (e.g., Honorific Title / Restored Missing Word)",\n'
+        '      "meaning": "Tamil & English meaning of the word",\n'
+        '      "is_restored": true or false (set to true if this word/character was filled in or restored by AI due to a missing gap)\n'
         '    }\n'
         '  ],\n'
         '  "alternative_readings": ["top 10 grammatically valid epigraphic readings"],\n'
@@ -88,7 +90,7 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
         "}\n"
     )
 
-    user_prompt = f'Raw Inscription Characters: "{raw_text}"{variations_str}\nProvide the word-segmented modern Tamil reading, word-by-word meanings, and top 10 alternative readings in strict JSON.'
+    user_prompt = f'Raw Inscription Characters: "{raw_text}"{variations_str}\nAnalyze the top 50 NLP variations, detect and fill any missing middle words, perform word segmentation, and return word-by-word breakdown in strict JSON.'
 
     payload = {
         "contents": [

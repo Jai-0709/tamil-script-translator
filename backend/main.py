@@ -567,21 +567,10 @@ async def translate(
             alternative_sentences.append(alt_sentence)
             alternative_roman_sentences.append(_to_roman(alt_sentence))
             
-    # ── 5. Optional Gemini API Free Tier Refinement ───────────────────────
-    raw_char_seq = [w.modern_tamil for w in words if w.modern_tamil and w.modern_tamil != "?"]
+    # Fast Initial Output: Leave AI Refinement for on-demand button click
+    ai_refined_sentence = None
+    ai_meaning = None
     ai_breakdown = None
-    gemini_res = gemini_epigraphic_refine(raw_char_seq, alternative_sentences[:50])
-    if gemini_res and "full_sentence" in gemini_res and gemini_res["full_sentence"]:
-        ai_refined_sentence = gemini_res["full_sentence"]
-        ai_meaning = gemini_res.get("meaning")
-        ai_breakdown = gemini_res.get("word_breakdown")
-        sentence = ai_refined_sentence
-        roman_sentence = _to_roman(sentence)
-        if "alternative_readings" in gemini_res and isinstance(gemini_res["alternative_readings"], list):
-            gemini_alts = [s.strip() for s in gemini_res["alternative_readings"] if s and s.strip()]
-            if gemini_alts:
-                alternative_sentences = gemini_alts[:10]
-                alternative_roman_sentences = [_to_roman(s) for s in alternative_sentences]
             
     return TranslateResponse(
         words          = words,
