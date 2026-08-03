@@ -69,28 +69,39 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
         variations_str = "\nTop NLP Beam Search Variations:\n" + "\n".join([f"- {v}" for v in top_variations[:50]])
 
     system_prompt = (
-        "You are an expert Ancient Tamil Epigraphist and Epigraphic Computational Linguistics AI.\n"
+        "You are a precise Ancient Tamil Epigraphist and Epigraphic Computational Linguistics AI.\n"
         "Your primary task is to take a raw sequence of ancient Tamil characters extracted from stone inscriptions (கல்வெட்டுகள்), "
-        "analyze the candidate NLP variations, detect any missing characters or missing words in the middle caused by stone erosion or segmentation gaps, "
-        "reconstruct the missing words according to classical Tamil epigraphic grammar (Chola/Pandya imperial titles and Sandhi rules), "
-        "perform accurate word segmentation (சொற்பிரிப்பு), and provide word-by-word Tamil & English meanings.\n\n"
+        "perform accurate word segmentation (சொற்பிரிப்பு), insert missing pulli (dots), and fix minor character typos or missing letters STRICTLY WITHIN THE GIVEN INPUT SEQUENCE.\n\n"
+        "STRICT CHARACTER & WORD BOUNDARY RULES:\n"
+        "1. DO NOT INVENT OR APPEND EXTRA UNRELATED WORDS OR FULL ROYAL TITLES. Only refine the words present in the given input characters. "
+        "For example, if the input characters form a single word or short phrase (e.g. 'உடை யா'), your output MUST contain ONLY that single word (e.g. 'உடையார்'). "
+        "DO NOT extrapolate or hallucinate un-cropped external words (such as 'ஸ்ரீ ராஜராஜ தேவர்') that are not present in the input sequence.\n"
+        "2. IN-SEQUENCE RESTORATION ONLY: You may only restore a missing letter or word IF it is clearly missing in the middle of the provided sequence or completing a broken word within the input bounds.\n"
+        "3. BILINGUAL ENGLISH & TAMIL OUTPUT: Provide clean modern Tamil AND fluent English translation for the refined sentence, the historical meaning, and every word breakdown item.\n\n"
         "Return output strictly as a JSON object matching this schema:\n"
         "{\n"
-        '  "full_sentence": "clean, word-segmented modern Tamil text with restored missing words and proper spaces",\n'
+        '  "full_sentence": "clean, word-segmented modern Tamil text containing ONLY the refined input sequence words",\n'
+        '  "english_translation": "Fluent English translation of the refined sentence",\n'
+        '  "meaning": "Detailed Tamil explanation of historical meaning and context",\n'
+        '  "english_meaning": "Detailed English explanation of historical meaning and context",\n'
         '  "word_breakdown": [\n'
         '    {\n'
         '      "word": "separated modern Tamil word",\n'
-        '      "type": "grammatical classification (e.g., Honorific Title / Restored Missing Word)",\n'
-        '      "meaning": "Tamil & English meaning of the word",\n'
-        '      "is_restored": true or false (set to true if this word/character was filled in or restored by AI due to a missing gap)\n'
+        '      "type": "grammatical classification",\n'
+        '      "meaning": "Tamil meaning of this specific word",\n'
+        '      "english_meaning": "English meaning of this specific word",\n'
+        '      "is_restored": true or false\n'
         '    }\n'
         '  ],\n'
-        '  "alternative_readings": ["top 10 grammatically valid epigraphic readings"],\n'
-        '  "meaning": "overall simple modern Tamil meaning of the full inscription"\n'
+        '  "alternative_readings": ["top 10 grammatically valid epigraphic readings strictly for the input"]\n'
         "}\n"
     )
 
-    user_prompt = f'Raw Inscription Characters: "{raw_text}"{variations_str}\nAnalyze the top 50 NLP variations, detect and fill any missing middle words, perform word segmentation, and return word-by-word breakdown in strict JSON.'
+    user_prompt = (
+        f'Raw Inscription Characters: "{raw_text}"{variations_str}\n'
+        'Refine the input sequence by performing word segmentation and restoring pulli dots or missing middle characters. '
+        'STRICT RULE: Do NOT add extra un-input words or un-cropped royal titles. Return strict JSON.'
+    )
 
     payload = {
         "contents": [
@@ -138,6 +149,25 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
                 result = json.loads(json_match.group(0))
             else:
                 result = json.loads(text_content)
+
+            # Post-processing safety guard:
+            # If the raw input is short (<= 7 chars), ensure we don't return hallucinated extra words
+            if result and "full_sentence" in result:
+                raw_clean = raw_text.replace(" ", "")
+                if len(raw_clean) <= 7 and result.get("word_breakdown"):
+                    filtered_breakdown = []
+                    valid_words = []
+                    for item in result.get("word_breakdown", []):
+                        w_str = item.get("word", "").strip()
+                        # Check character overlap with raw input
+                        has_overlap = any(char in raw_clean for char in w_str)
+                        if has_overlap or len(filtered_breakdown) == 0:
+                            filtered_breakdown.append(item)
+                            valid_words.append(w_str)
+                    if filtered_breakdown:
+                        result["word_breakdown"] = filtered_breakdown
+                        result["full_sentence"] = " ".join(valid_words)
+
             print(f"[GEMINI] Successfully received epigraphic refinement from {model_name}: {result.get('full_sentence')}")
             return result
         except urllib.error.HTTPError as e:

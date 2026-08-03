@@ -16,6 +16,8 @@ export default function OriginalImageViewer({
   imageHeight,
   hoveredWordId,
   onWordHover,
+  maxHeight = null,
+  zoomLevel = 1.0,
 }) {
   const containerRef = useRef(null)
   const imgRef       = useRef(null)
@@ -36,6 +38,7 @@ export default function OriginalImageViewer({
     ctx.clearRect(0, 0, width, height)
 
     if (!hoveredWordId || !words.length || !imageWidth || !imageHeight) return
+    if (img.naturalWidth > 0 && Math.abs(img.naturalWidth - imageWidth) > 50) return
 
     const word = words.find(w => w.id === hoveredWordId)
     if (!word) return
@@ -198,96 +201,119 @@ export default function OriginalImageViewer({
   const ZOOM_SIZE = 200   // px × px zoom panel
 
   return (
-    <div ref={containerRef} style={{
-      position: 'relative',
-      width: '100%',
-    }}>
-
-      {/* Original image */}
-      <img
-        ref={imgRef}
-        src={imageURL}
-        alt="Original inscription"
-        onLoad={() => { drawSpotlight(); drawZoom() }}
+    <div
+      ref={containerRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+        height: maxHeight ? `${maxHeight}px` : 'auto',
+        overflow: 'auto',
+        background: '#070707',
+        borderRadius: 10,
+        border: '1px solid var(--line)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
         style={{
-          display: 'block',
-          width: '100%',
-          height: 'auto',
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          boxShadow: '0 2px 16px rgba(0,0,0,0.35)',
+          position: 'relative',
+          display: 'inline-block',
+          maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+          maxWidth: '100%',
+          transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
+          transformOrigin: 'top left',
+          transition: 'transform 0.15s ease-out',
         }}
-      />
+      >
+        <img
+          ref={imgRef}
+          src={imageURL}
+          alt="Original inscription"
+          onLoad={() => { drawSpotlight(); drawZoom() }}
+          style={{
+            display: 'block',
+            maxWidth: '100%',
+            maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+            width: 'auto',
+            height: 'auto',
+            objectFit: 'contain',
+            borderRadius: 8,
+          }}
+        />
 
-      {/* Spotlight overlay canvas */}
-      <canvas
-        ref={canvasRef}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => onWordHover(null)}
-        style={{
-          position: 'absolute',
-          top: 0, left: 0,
-          width: '100%',
-          height: '100%',
-          borderRadius: 10,
-          cursor: words.length ? 'crosshair' : 'default',
-          pointerEvents: words.length ? 'auto' : 'none',
-        }}
-      />
-
-      {/* ── Zoom panel — dynamically avoids covering the hovered character ── */}
-      {hoveredWordId && (() => {
-        const hoveredWord = words.find(w => w.id === hoveredWordId);
-        const isRightHalf = hoveredWord && imageWidth && (hoveredWord.x > imageWidth / 2);
-        return (
-          <div style={{
+        {/* Spotlight overlay canvas */}
+        <canvas
+          ref={canvasRef}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => onWordHover(null)}
+          style={{
             position: 'absolute',
-            top: 10,
-            right: isRightHalf ? undefined : 10,
-            left: isRightHalf ? 10 : undefined,
-            width:  ZOOM_SIZE,
-          height: ZOOM_SIZE,
-          borderRadius: 12,
-          border: '2px solid #f97316',
-          boxShadow: '0 0 0 3px rgba(249,115,22,0.25), 0 8px 32px rgba(0,0,0,0.6)',
-          overflow: 'hidden',
-          background: '#111',
-          zIndex: 20,
-        }}>
-          {/* Header */}
-          <div style={{
-            position: 'absolute',
-            top: 0, left: 0, right: 0,
-            height: 24,
-            background: '#f97316',
-            display: 'flex',
-            alignItems: 'center',
-            paddingLeft: 8,
-            fontSize: 10,
-            fontWeight: 700,
-            letterSpacing: '0.06em',
-            color: '#000',
-            zIndex: 2,
-            textTransform: 'uppercase',
-          }}>
-            🔎 Zoomed In
-          </div>
+            top: 0, left: 0,
+            width: '100%',
+            height: '100%',
+            borderRadius: 8,
+            cursor: words.length ? 'crosshair' : 'default',
+            pointerEvents: words.length ? 'auto' : 'none',
+          }}
+        />
 
-          <canvas
-            ref={zoomRef}
-            width={ZOOM_SIZE}
-            height={ZOOM_SIZE}
-            style={{
+        {/* ── Zoom panel — dynamically avoids covering the hovered character ── */}
+        {hoveredWordId && (() => {
+          const hoveredWord = words.find(w => w.id === hoveredWordId);
+          const isRightHalf = hoveredWord && imageWidth && (hoveredWord.x > imageWidth / 2);
+          return (
+            <div style={{
               position: 'absolute',
-              top: 24, left: 0,
+              top: 10,
+              right: isRightHalf ? undefined : 10,
+              left: isRightHalf ? 10 : undefined,
               width:  ZOOM_SIZE,
-              height: ZOOM_SIZE - 24,
-              imageRendering: 'pixelated',
-            }}
-          />
-        </div>
-        )
-      })()}
+              height: ZOOM_SIZE,
+              borderRadius: 12,
+              border: '2px solid #f97316',
+              boxShadow: '0 0 0 3px rgba(249,115,22,0.25), 0 8px 32px rgba(0,0,0,0.6)',
+              overflow: 'hidden',
+              background: '#111',
+              zIndex: 20,
+            }}>
+              {/* Header */}
+              <div style={{
+                position: 'absolute',
+                top: 0, left: 0, right: 0,
+                height: 24,
+                background: '#f97316',
+                display: 'flex',
+                alignItems: 'center',
+                paddingLeft: 8,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                color: '#000',
+                zIndex: 2,
+                textTransform: 'uppercase',
+              }}>
+                🔎 Zoomed In
+              </div>
+
+              <canvas
+                ref={zoomRef}
+                width={ZOOM_SIZE}
+                height={ZOOM_SIZE}
+                style={{
+                  position: 'absolute',
+                  top: 24, left: 0,
+                  width:  ZOOM_SIZE,
+                  height: ZOOM_SIZE - 24,
+                  imageRendering: 'pixelated',
+                }}
+              />
+            </div>
+          )
+        })()}
+      </div>
     </div>
   )
 }

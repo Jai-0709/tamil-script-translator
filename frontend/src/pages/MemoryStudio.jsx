@@ -110,10 +110,10 @@ export default function MemoryStudio() {
         marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16
       }}>
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--accent)', margin: 0 }}>
-            🧠 Saved Memory & Segmentation Studio
+          <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--copper)', margin: 0 }}>
+            Saved Memory & Segmentation Studio
           </h1>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0 0' }}>
+          <p style={{ fontSize: 13, color: 'var(--fg-3)', margin: '4px 0 0 0' }}>
             Manage learned character feature vectors, custom box adjustments, additions, and saved image layouts.
           </p>
         </div>
@@ -122,31 +122,31 @@ export default function MemoryStudio() {
             onClick={fetchMemorySummary}
             style={{
               padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)',
-              border: '1px solid var(--border)', cursor: 'pointer'
+              background: 'var(--surface-2)', color: 'var(--fg)',
+              border: '1px solid var(--line)', cursor: 'pointer'
             }}
           >
-            🔄 Refresh
+            Refresh Memory
           </button>
           <button
             onClick={exportMemoryJSON}
             style={{
               padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              background: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6',
-              border: '1px solid rgba(59, 130, 246, 0.4)', cursor: 'pointer'
+              background: 'rgba(59, 130, 246, 0.12)', color: '#3b82f6',
+              border: '1px solid rgba(59, 130, 246, 0.3)', cursor: 'pointer'
             }}
           >
-            📥 Export Backup JSON
+            Export Backup JSON
           </button>
           <button
             onClick={handleClearAllVectorMemory}
             style={{
               padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              background: 'rgba(239, 68, 68, 0.15)', color: '#ef4444',
-              border: '1px solid rgba(239, 68, 68, 0.4)', cursor: 'pointer'
+              background: 'rgba(239, 68, 68, 0.12)', color: '#ef4444',
+              border: '1px solid rgba(239, 68, 68, 0.3)', cursor: 'pointer'
             }}
           >
-            ⚠️ Clear All Vector Memory
+            Clear All Vector Memory
           </button>
         </div>
       </div>
@@ -154,46 +154,46 @@ export default function MemoryStudio() {
       {/* Stats Summary Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
         <div style={{
-          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-          borderRadius: 12, padding: 16
+          background: 'var(--surface-1)', border: '1px solid var(--line)',
+          borderRadius: 12, padding: 16, boxShadow: 'var(--shadow-card)'
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase' }}>
             Learned Character Embeddings
           </span>
-          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--accent)', marginTop: 4 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--copper)', marginTop: 4 }}>
             {memoryData?.vector_memory_count ?? 0}
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
             Universal Few-Shot Vector Features
           </span>
         </div>
 
         <div style={{
-          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-          borderRadius: 12, padding: 16
+          background: 'var(--surface-1)', border: '1px solid var(--line)',
+          borderRadius: 12, padding: 16, boxShadow: 'var(--shadow-card)'
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase' }}>
             Saved Layout Inscriptions
           </span>
           <div style={{ fontSize: 28, fontWeight: 800, color: '#3b82f6', marginTop: 4 }}>
             {memoryData?.layout_memory_count ?? 0}
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
             Image Bounding Box Layouts
           </span>
         </div>
 
         <div style={{
-          background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
-          borderRadius: 12, padding: 16
+          background: 'var(--surface-1)', border: '1px solid var(--line)',
+          borderRadius: 12, padding: 16, boxShadow: 'var(--shadow-card)'
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase' }}>
             Total Custom Bounding Boxes
           </span>
           <div style={{ fontSize: 28, fontWeight: 800, color: '#22c55e', marginTop: 4 }}>
             {layoutEntries.reduce((acc, [_, boxes]) => acc + boxes.length, 0)}
           </div>
-          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
             Manually Added / Adjusted Bounding Boxes
           </span>
         </div>
@@ -204,28 +204,28 @@ export default function MemoryStudio() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: 20
       }}>
-        <div style={{ display: 'flex', gap: 8, background: '#0e1017', padding: 4, borderRadius: 10, border: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', gap: 8, background: 'var(--surface-2)', padding: 4, borderRadius: 10, border: '1px solid var(--line)' }}>
           <button
             onClick={() => setActiveTab('vector')}
             style={{
               padding: '8px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              background: activeTab === 'vector' ? 'var(--accent)' : 'transparent',
-              color: activeTab === 'vector' ? '#000' : 'var(--text-secondary)',
+              background: activeTab === 'vector' ? 'var(--copper)' : 'transparent',
+              color: activeTab === 'vector' ? 'var(--btn-primary-fg)' : 'var(--fg-3)',
               border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
             }}
           >
-            🧠 Vector Character Memory ({memoryData?.vector_memory_count ?? 0})
+            Vector Character Memory ({memoryData?.vector_memory_count ?? 0})
           </button>
           <button
             onClick={() => setActiveTab('layout')}
             style={{
               padding: '8px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-              background: activeTab === 'layout' ? 'var(--accent)' : 'transparent',
-              color: activeTab === 'layout' ? '#000' : 'var(--text-secondary)',
+              background: activeTab === 'layout' ? 'var(--copper)' : 'transparent',
+              color: activeTab === 'layout' ? 'var(--btn-primary-fg)' : 'var(--fg-3)',
               border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
             }}
           >
-            📐 Segmentation Layout Memory ({memoryData?.layout_memory_count ?? 0})
+            Segmentation Layout Memory ({memoryData?.layout_memory_count ?? 0})
           </button>
         </div>
 
@@ -236,33 +236,33 @@ export default function MemoryStudio() {
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
             padding: '8px 14px', borderRadius: 8, fontSize: 12, width: 260,
-            background: 'rgba(255,255,255,0.04)', color: 'var(--text-primary)',
-            border: '1px solid var(--border)', outline: 'none'
+            background: 'var(--surface-1)', color: 'var(--fg)',
+            border: '1px solid var(--line)', outline: 'none'
           }}
         />
       </div>
 
       {/* Content Area */}
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)' }}>
+        <div style={{ textAlign: 'center', padding: 60, color: 'var(--fg-3)' }}>
           Loading saved memory database...
         </div>
       ) : activeTab === 'vector' ? (
         /* Vector Memory Tab */
         <div>
           {filteredVector.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', borderRadius: 12 }}>
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--fg-3)', background: 'var(--surface-1)', border: '1px solid var(--line)', borderRadius: 12 }}>
               No character vector memory entries found.
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
               {filteredVector.map((item, idx) => (
                 <div key={idx} style={{
-                  background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                  background: 'var(--surface-1)', border: '1px solid var(--line)', boxShadow: 'var(--shadow-card)',
                   borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', justifyContent: 'space-between'
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--fg-3)' }}>
                       #{idx + 1}
                     </span>
                     <span style={{
@@ -274,10 +274,10 @@ export default function MemoryStudio() {
                   </div>
 
                   <div style={{ textAlign: 'center', margin: '14px 0' }}>
-                    <div style={{ fontSize: 36, fontWeight: 800, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: 36, fontWeight: 800, color: 'var(--fg)' }}>
                       {item.modern_tamil}
                     </div>
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                    <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
                       Learned Neural Embedding
                     </span>
                   </div>
@@ -290,7 +290,7 @@ export default function MemoryStudio() {
                       border: '1px solid rgba(239, 68, 68, 0.3)', cursor: 'pointer'
                     }}
                   >
-                    🗑 Remove Memory
+                    Remove Memory
                   </button>
                 </div>
               ))}
@@ -301,22 +301,22 @@ export default function MemoryStudio() {
         /* Layout Memory Tab */
         <div>
           {filteredLayouts.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: 60, color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', borderRadius: 12 }}>
+            <div style={{ textAlign: 'center', padding: 60, color: 'var(--fg-3)', background: 'var(--surface-1)', border: '1px solid var(--line)', borderRadius: 12 }}>
               No custom segmentation layouts saved on disk.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {filteredLayouts.map(([filename, boxes], idx) => (
                 <div key={idx} style={{
-                  background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+                  background: 'var(--surface-1)', border: '1px solid var(--line)', boxShadow: 'var(--shadow-card)',
                   borderRadius: 12, padding: 18
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                     <div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--accent)' }}>
-                        🖼️ {filename}
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--copper)' }}>
+                        {filename}
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                      <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
                         {boxes.length} custom saved bounding boxes
                       </span>
                     </div>
@@ -329,7 +329,7 @@ export default function MemoryStudio() {
                         border: '1px solid rgba(239, 68, 68, 0.3)', cursor: 'pointer'
                       }}
                     >
-                      🗑 Clear Image Layout
+                      Clear Image Layout
                     </button>
                   </div>
 
@@ -337,16 +337,16 @@ export default function MemoryStudio() {
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                     {boxes.map((b, bIdx) => (
                       <div key={bIdx} style={{
-                        background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                        background: 'var(--surface-2)', border: '1px solid var(--line)',
                         borderRadius: 8, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10
                       }}>
                         <span style={{
-                          fontSize: 16, fontWeight: 800, color: 'var(--accent)',
-                          background: 'rgba(249, 115, 22, 0.15)', padding: '2px 8px', borderRadius: 6
+                          fontSize: 16, fontWeight: 800, color: 'var(--copper)',
+                          background: 'var(--copper-dim)', padding: '2px 8px', borderRadius: 6
                         }}>
                           {b.modern_tamil || '?'}
                         </span>
-                        <div style={{ fontSize: 10, color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column' }}>
+                        <div style={{ fontSize: 10, color: 'var(--fg-3)', display: 'flex', flexDirection: 'column' }}>
                           <span>Box #{bIdx + 1}</span>
                           <span>X: {b.x}, Y: {b.y}</span>
                           <span>W: {b.w}, H: {b.h}</span>

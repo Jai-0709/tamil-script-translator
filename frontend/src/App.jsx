@@ -1,80 +1,167 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import axios from 'axios'
 import Navbar from './components/Navbar'
 import LandingPage from './components/LandingPage'
 import UploadZone from './components/UploadZone'
 import InscriptionCanvas from './components/InscriptionCanvas'
 import OriginalImageViewer from './components/OriginalImageViewer'
+import RegionSelector from './components/RegionSelector'
 import TranslationPanel from './components/TranslationPanel'
 import SentenceOutput from './components/SentenceOutput'
 import LoadingOverlay from './components/LoadingOverlay'
 import CorrectionPopover from './components/CorrectionPopover'
-import RegionSelector from './components/RegionSelector'
 import DatasetStudio from './pages/DatasetStudio'
 import MemoryStudio from './pages/MemoryStudio'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
-// ── Correction feedback persisted to localStorage ──────────────────────────
 const LS_KEY = 'tamil_corrections'
 function loadCorrections() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
 }
 function saveCorrections(c) {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(c)) } catch { /* ignore */ }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(c)) } catch { /* noop */ }
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function Toast({ msg, ok }) {
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 500,
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '10px 16px',
+      background: 'var(--surface-3)',
+      border: `1px solid ${ok ? 'rgba(61,163,93,0.35)' : 'rgba(142,59,59,0.35)'}`,
+      borderRadius: 'var(--r-md)',
+      boxShadow: '0 8px 32px rgba(0,0,0,0.45)',
+      animation: 'slideUp 0.22s ease-out',
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: ok ? '#3da35d' : '#8e3b3b', flexShrink: 0 }} />
+      <span style={{ fontSize: 13, color: 'var(--fg-2)', fontWeight: 500 }}>{msg}</span>
+      <style>{`@keyframes slideUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }`}</style>
+    </div>
+  )
 }
 
 export default function App() {
-  const [imageFile, setImageFile]         = useState(null)
-  const [imageURL, setImageURL]           = useState(null)
+  const [imageFile, setImageFile]     = useState(null)
+  const [imageURL, setImageURL]       = useState(null)
   const [displayImageURL, setDisplayImageURL] = useState(null)
-  const [apiResponse, setApiResponse]     = useState(null)
-  const [isLoading, setIsLoading]         = useState(false)
-  const [isRefetching, setIsRefetching]   = useState(false)
-  const [error, setError]                 = useState(null)
+  const [apiResponse, setApiResponse] = useState(null)
+  const [isLoading, setIsLoading]     = useState(false)
+  const [isRefetching, setIsRefetching] = useState(false)
+  const [error, setError]             = useState(null)
   const [hoveredWordId, setHoveredWordId] = useState(null)
 
-  // Theme Management
-  const [theme, setTheme]                 = useState('dark')
-  function toggleTheme() {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    document.documentElement.setAttribute('data-theme', next)
-  }
+  const [threshold, setThreshold]     = useState(0)
+  const [corrections, setCorrections] = useState({})
+  const [popover, setPopover]         = useState(null)
 
-  // Feature 1 — Confidence threshold
-  const [threshold, setThreshold]         = useState(0)
+  const [isRefiningAI, setIsRefiningAI]                             = useState(false)
+  const [aiRefinedState, setAiRefinedState]                         = useState(null)
+  const [aiEnglishTranslationState, setAiEnglishTranslationState]   = useState(null)
+  const [aiMeaningState, setAiMeaningState]                         = useState(null)
+  const [aiEnglishMeaningState, setAiEnglishMeaningState]           = useState(null)
+  const [aiWordBreakdownState, setAiWordBreakdownState]             = useState([])
 
-  // Feature 2 — Manual corrections
-  const [corrections, setCorrections]     = useState({})   // {[wordId]: newChar}
-  const [popover, setPopover]             = useState(null) // {word, x, y}
-
-  // AI Refinement State
-  const [isRefiningAI, setIsRefiningAI]   = useState(false)
-  const [aiRefinedState, setAiRefinedState] = useState(null)
-  const [aiMeaningState, setAiMeaningState] = useState(null)
-  const [aiWordBreakdownState, setAiWordBreakdownState] = useState([])
-
-  // Feature 3 — Region selector
-  const [regionMode, setRegionMode]       = useState(false)
+  const [regionMode, setRegionMode]         = useState(false)
   const [selectedRegion, setSelectedRegion] = useState(null)
-  const imageNaturalRef                   = useRef({ w: 0, h: 0 })
+  const [isAddingBox, setIsAddingBox]       = useState(false)
+  const imageNaturalRef                     = useRef({ w: 0, h: 0 })
+  const fullInscriptionApiResponseRef       = useRef(null)
 
-  // Feature 4 — Smart Hybrid YOLO Segmentation Toggle
-  const [segmentMode, setSegmentMode]     = useState('smart') // 'smart' or 'classic'
+  const mergeGap = 0
 
-  // Feature 5 — Merge Distance (Permanently 0px)
-  const mergeGap                          = 0
+  const [activePage, setActivePage] = useState('landing')
+  const [toast, setToast]           = useState(null)
 
-  // Navigation: 'landing' | 'translator' | 'dataset' | 'memory'
-  const [activePage, setActivePage]       = useState('landing')
+  const [theme, setTheme]                 = useState('dark') // 'dark' | 'light'
+  const [imageFitMode, setImageFitMode]   = useState('full') // 'full' (Full Height by default) vs 'fit'
+  const [windowHeight, setWindowHeight]   = useState(480)   // 380, 480, 620
+  const [zoomLevel, setZoomLevel]         = useState(1.0)   // 0.6x to 2.5x
 
-  // Toast notification
-  const [toast, setToast]                 = useState(null)  // { msg, ok }
+  const toggleTheme = useCallback(() => {
+    setTheme(t => (t === 'dark' ? 'light' : 'dark'))
+  }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
+
   function showToast(msg, ok = true) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 3500)
   }
+
+  const [isCroppedView, setIsCroppedView] = useState(false)
+  const [canvasViewMode, setCanvasViewMode] = useState('both') // 'both' | 'detection' | 'original'
+
+  // ── Derived data ──────────────────────────────────────────────────────────
+  const rawWords = apiResponse?.words || []
+  const words = useMemo(() => {
+    const list = threshold === 0 ? rawWords : rawWords.filter(w => w.confidence >= threshold / 100)
+    return sortInscriptionWords(list)
+  }, [rawWords, threshold])
+
+  const effectiveFullSentence = useMemo(() => {
+    if (!words.length) return apiResponse?.full_sentence || ''
+    const sorted = sortInscriptionWords(words)
+    return sorted.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+  }, [words, corrections, apiResponse])
+
+  const effectiveAlternatives = useMemo(() => {
+    if (!words.length) return apiResponse?.alternative_sentences || []
+
+    const primarySeq = words.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
+    if (!primarySeq) return apiResponse?.alternative_sentences || []
+
+    const alts = new Set()
+
+    // 1. Base backend alternative sentences mapped with current corrections
+    const baseAlts = apiResponse?.alternative_sentences || []
+    baseAlts.forEach(alt => {
+      let mod = alt
+      Object.entries(corrections).forEach(([id, char]) => {
+        const target = words.find(w => String(w.id) === String(id))
+        if (target && target.modern_tamil) {
+          mod = mod.replaceAll(target.modern_tamil, char)
+        }
+      })
+      if (mod && mod !== primarySeq) alts.add(mod)
+    })
+
+    // 2. Candidate substitutions from top3 and ambiguous_options
+    words.forEach((word, idx) => {
+      const options = (word.top3?.map(t => t.modern_tamil) || word.ambiguous_options || []).filter(c => c && c !== '?')
+      options.forEach(cand => {
+        const copyWords = [...words]
+        copyWords[idx] = { ...word, modern_tamil: cand }
+        const varSeq = copyWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
+        if (varSeq && varSeq !== primarySeq) alts.add(varSeq)
+      })
+    })
+
+    // 3. Common Tamil Epigraphic / Grammatical Variants
+    const grammaticalVariants = ['வு', 'ந்த', 'ந்தது', 'த்தல்', 'த்து', 'ன்', 'கள்', 'அ']
+    grammaticalVariants.forEach(suf => {
+      alts.add(primarySeq + suf)
+    })
+
+    // 4. Euphonic / Sandhi variations for classical Tamil inscriptions
+    if (primarySeq.endsWith('ல்')) {
+      alts.add(primarySeq.slice(0, -1) + 'ற்')
+      alts.add(primarySeq.slice(0, -1) + 'ல')
+    }
+    if (primarySeq.endsWith('ம்')) {
+      alts.add(primarySeq.slice(0, -1) + 'ந்')
+      alts.add(primarySeq.slice(0, -1) + 'ங்')
+    }
+
+    const result = Array.from(alts).filter(s => s && s.trim().length > 0).slice(0, 10)
+    return result.length > 0 ? result : [primarySeq]
+  }, [words, corrections, apiResponse])
+
+  const hasResult = !!apiResponse && !isLoading
 
   function handleFileSelect(file) {
     setImageFile(file)
@@ -88,57 +175,105 @@ export default function App() {
     setPopover(null)
     setSelectedRegion(null)
     setRegionMode(false)
-
+    setIsCroppedView(false)
     setAiRefinedState(null)
     setAiMeaningState(null)
     setAiWordBreakdownState([])
 
-    // Read natural dimensions
+    fullInscriptionApiResponseRef.current = null
     const img = new Image()
-    img.onload = () => {
-      imageNaturalRef.current = { w: img.naturalWidth, h: img.naturalHeight }
-    }
+    img.onload = () => { imageNaturalRef.current = { w: img.naturalWidth, h: img.naturalHeight } }
     img.src = url
   }
 
-  // 1-Click Preset Sample Selector Handler from Landing Page
-  async function handleSelectSample(sample) {
-    setActivePage('translator')
-    setIsLoading(true)
+  async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion) {
+    if (!imageFile) return
+    if (!apiResponse) setIsLoading(true)
+    else setIsRefetching(true)
     setError(null)
-    try {
-      showToast(`Loading ${sample.title}...`)
-      let dataURI = ''
-      if (typeof sample.getStoneDataURI === 'function') {
-        dataURI = sample.getStoneDataURI()
-      }
-      
-      let blob
-      if (dataURI) {
-        const res = await fetch(dataURI)
-        blob = await res.blob()
-      } else {
-        const res = await fetch(sample.image)
-        blob = await res.blob()
-      }
 
-      const file = new File([blob], `${sample.id}.jpg`, { type: 'image/jpeg' })
-      handleFileSelect(file)
+    try {
+      let fileToSend      = imageFile
+      let finalDisplayURL = imageURL
+
+      if (regionOverride) {
+        const tempImg = new Image()
+        await new Promise((resolve, reject) => {
+          tempImg.onload = resolve
+          tempImg.onerror = () => reject(new Error('Failed to load image for cropping'))
+          tempImg.src = imageURL
+          if (tempImg.complete) resolve()
+        })
+
+        const naturalW = tempImg.naturalWidth  || imageNaturalRef.current.w || 1000
+        const naturalH = tempImg.naturalHeight || imageNaturalRef.current.h || 1000
+
+        const cropX = Math.round((regionOverride.x / 100) * naturalW)
+        const cropY = Math.round((regionOverride.y / 100) * naturalH)
+        const cropW = Math.round((regionOverride.w / 100) * naturalW)
+        const cropH = Math.round((regionOverride.h / 100) * naturalH)
+
+        const cropCanvas  = document.createElement('canvas')
+        cropCanvas.width  = Math.max(1, cropW)
+        cropCanvas.height = Math.max(1, cropH)
+        const ctx = cropCanvas.getContext('2d')
+        ctx.drawImage(tempImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+
+        const blob = await new Promise((res) => cropCanvas.toBlob(res, 'image/jpeg', 0.95))
+        fileToSend      = new File([blob], 'cropped_region.jpg', { type: 'image/jpeg' })
+        finalDisplayURL = URL.createObjectURL(blob)
+      } else {
+        finalDisplayURL = imageURL
+      }
 
       const form = new FormData()
-      form.append('file', file)
-      form.append('merge_gap', '0')
+      form.append('file', fileToSend)
+      form.append('merge_gap', String(gapOverride))
 
-      const translateRes = await axios.post(`${BACKEND_URL}/translate`, form)
-      setApiResponse(translateRes.data)
-      showToast(`Decoded ${sample.title}!`)
+      const data = await axios.post(`${BACKEND_URL}/translate`, form).then(r => r.data)
+      setApiResponse(data)
+      if (!regionOverride) {
+        fullInscriptionApiResponseRef.current = data
+      }
+      setDisplayImageURL(finalDisplayURL)
+      setIsCroppedView(!!regionOverride)
+      setRegionMode(false)
+
+      // Reset AI refinement state for the new translation
+      setAiRefinedState(null)
+      setAiMeaningState(null)
+      setAiWordBreakdownState([])
+
+      showToast(regionOverride ? `Translated region (${data.words?.length || 0} characters)` : `Translated full inscription (${data.words?.length || 0} characters)`)
     } catch (err) {
-      console.error("Failed to auto-translate preset sample:", err)
-      showToast("Error processing sample image — check backend server", false)
+      console.error(err)
+      setError(err?.response?.data?.detail || err?.message || 'Server error')
+      showToast('Translation failed', false)
     } finally {
       setIsLoading(false)
+      setIsRefetching(false)
     }
   }
+
+  const handleResetToFullImage = useCallback(() => {
+    setSelectedRegion(null)
+    setIsCroppedView(false)
+    setDisplayImageURL(imageURL)
+    setRegionMode(false)
+    setHoveredWordId(null)
+    setPopover(null)
+
+    const cachedFull = fullInscriptionApiResponseRef.current
+    const naturalW = imageNaturalRef.current?.w
+
+    if (cachedFull && cachedFull.words && cachedFull.image_width && (!naturalW || Math.abs(cachedFull.image_width - naturalW) < 10)) {
+      setApiResponse(cachedFull)
+      showToast('Restored full image view')
+    } else {
+      // Re-trigger full image translation if cached response is missing or belonged to a cropped region
+      handleTranslate(mergeGap, null)
+    }
+  }, [imageURL, mergeGap])
 
   async function handleRefineAI() {
     if (!words || words.length === 0) return
@@ -148,359 +283,453 @@ export default function App() {
       const res = await fetch(`${BACKEND_URL}/refine-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_characters: rawChars,
-          alternative_sentences: effectiveAlternatives
-        })
+        body: JSON.stringify({ raw_characters: rawChars, alternative_sentences: effectiveAlternatives })
       })
       if (!res.ok) throw new Error('AI Refinement failed')
       const data = await res.json()
       setAiRefinedState(data.ai_refined_sentence)
+      setAiEnglishTranslationState(data.english_translation || '')
       setAiMeaningState(data.ai_meaning)
+      setAiEnglishMeaningState(data.english_meaning || '')
       setAiWordBreakdownState(data.ai_word_breakdown || [])
-      showToast('Epigraphic AI Breakdown & Word Segmentations Updated!')
+      showToast('AI refinement complete')
     } catch (err) {
       console.error(err)
-      showToast('AI Refinement service rate-limited or unavailable', false)
+      showToast('AI service rate-limited or unavailable', false)
     } finally {
       setIsRefiningAI(false)
     }
   }
 
-  // Translate API handler
-  async function handleTranslate(gapOverride = mergeGap, regionOverride = selectedRegion, customBoxes = null) {
-    if (!imageFile) return
-    if (!apiResponse) setIsLoading(true)
-    else setIsRefetching(true)
-    setError(null)
+function sortInscriptionWords(wordsList = []) {
+  if (!wordsList || !wordsList.length) return []
+  return [...wordsList].sort((a, b) => {
+    // 1. Line number sort
+    const lineA = a.line ?? 1
+    const lineB = b.line ?? 1
+    if (lineA !== lineB) return lineA - lineB
 
-    try {
-      let fileToSend = imageFile
-      let finalDisplayURL = imageURL
-
-      if (regionOverride && imageNaturalRef.current.w > 0) {
-        const cropCanvas = document.createElement('canvas')
-        const naturalW = imageNaturalRef.current.w
-        const naturalH = imageNaturalRef.current.h
-        const cropX = (regionOverride.x / 100) * naturalW
-        const cropY = (regionOverride.y / 100) * naturalH
-        const cropW = (regionOverride.w / 100) * naturalW
-        const cropH = (regionOverride.h / 100) * naturalH
-
-        cropCanvas.width = cropW
-        cropCanvas.height = cropH
-        const ctx = cropCanvas.getContext('2d')
-
-        const tempImg = new Image()
-        tempImg.src = imageURL
-        await new Promise((res) => { tempImg.onload = res })
-
-        ctx.drawImage(tempImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
-
-        const blob = await new Promise((res) => cropCanvas.toBlob(res, 'image/jpeg', 0.95))
-        fileToSend = new File([blob], 'cropped_region.jpg', { type: 'image/jpeg' })
-        finalDisplayURL = URL.createObjectURL(blob)
-      }
-
-      const form = new FormData()
-      form.append('file', fileToSend)
-      form.append('merge_gap', String(gapOverride))
-
-      const data = await axios.post(`${BACKEND_URL}/translate`, form).then(r => r.data)
-      setApiResponse(data)
-      setDisplayImageURL(finalDisplayURL)
-      setRegionMode(false)
-    } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || 'Unknown error from server.')
-    } finally {
-      setIsLoading(false)
-      setIsRefetching(false)
+    // 2. Vertical Y coordinate center position threshold (if lines are equal or unassigned)
+    const yA = (a.y || 0) + (a.h || 0) / 2
+    const yB = (b.y || 0) + (b.h || 0) / 2
+    const avgH = ((a.h || 30) + (b.h || 30)) / 2
+    if (Math.abs(yA - yB) > avgH * 0.5) {
+      return yA - yB
     }
+
+    // 3. Horizontal X coordinate sort (Left to Right)
+    return (a.x || 0) - (b.x || 0)
+  })
+}
+
+function generateAlternativeSentences(wordList = [], corrMap = {}) {
+  if (!wordList || !wordList.length) return []
+  const sortedWords = sortInscriptionWords(wordList)
+  const primarySeq = sortedWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
+  if (!primarySeq) return []
+
+  const alts = new Set()
+
+  // 1. Candidate substitutions from top3 and ambiguous_options for every character
+  sortedWords.forEach((word, idx) => {
+    const options = (word.top3?.map(t => t.modern_tamil) || word.ambiguous_options || []).filter(c => c && c !== '?')
+    options.forEach(cand => {
+      const copyWords = [...sortedWords]
+      copyWords[idx] = { ...word, modern_tamil: cand }
+      const varSeq = copyWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
+      if (varSeq && varSeq !== primarySeq) alts.add(varSeq)
+    })
+  })
+
+  // 2. Classical Tamil Epigraphic / Grammatical Variants
+  const grammaticalVariants = ['வு', 'ந்த', 'ந்தது', 'த்தல்', 'த்து', 'ன்', 'கள்', 'அ']
+  grammaticalVariants.forEach(suf => {
+    alts.add(primarySeq + suf)
+  })
+
+  // 3. Sandhi / Euphonic variations for classical Tamil inscriptions
+  if (primarySeq.endsWith('ல்')) {
+    alts.add(primarySeq.slice(0, -1) + 'ற்')
+    alts.add(primarySeq.slice(0, -1) + 'ல')
+  }
+  if (primarySeq.endsWith('ம்')) {
+    alts.add(primarySeq.slice(0, -1) + 'ந்')
+    alts.add(primarySeq.slice(0, -1) + 'ங்')
   }
 
-  // Feature 2 — apply a correction
-  const handleCorrect = useCallback((wordId, newChar) => {
-    setCorrections(prev => {
-      const next = { ...prev, [wordId]: newChar }
-      saveCorrections(next)
-      return next
-    })
+  const result = Array.from(alts).filter(s => s && s.trim().length > 0).slice(0, 10)
+  return result.length > 0 ? result : [primarySeq]
+}
 
-    if (apiResponse && apiResponse.words) {
+  const handleCorrect = useCallback((wordId, newChar) => {
+    const nextCorrections = { ...corrections, [wordId]: newChar }
+    setCorrections(nextCorrections)
+    saveCorrections(nextCorrections)
+
+    if (apiResponse?.words) {
+      const updatedWords = sortInscriptionWords(apiResponse.words.map(w => w.id === wordId ? { ...w, modern_tamil: newChar } : w))
+      const updatedSeq = updatedWords.map(w => w.modern_tamil).filter(c => c && c !== '?').join(' ')
+      const updatedAlts = generateAlternativeSentences(updatedWords, nextCorrections)
+      setApiResponse(prev => ({
+        ...prev,
+        words: updatedWords,
+        full_sentence: updatedSeq,
+        raw_sentence: updatedSeq,
+        alternative_sentences: updatedAlts,
+      }))
+
       const word = apiResponse.words.find(w => w.id === wordId)
       if (word) {
         fetch(`${BACKEND_URL}/api/remember`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            word_id: word.id,
-            modern_tamil: newChar
-          })
-        }).catch(err => console.error("Failed to memorize:", err))
+          body: JSON.stringify({ word_id: word.id, modern_tamil: newChar })
+        }).catch(console.error)
       }
     }
-  }, [apiResponse])
+  }, [apiResponse, corrections])
 
-  // Reset/forget vector memory for a character
   const handleForgetMemory = useCallback((wordId) => {
-    if (apiResponse && apiResponse.words) {
-      const word = apiResponse.words.find(w => w.id === wordId)
-      if (word) {
-        fetch(`${BACKEND_URL}/api/forget-memory`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ word_id: word.id })
-        })
-        .then(res => res.json())
-        .then(() => {
-          showToast(`Forgot memory for character #${word.id}`)
-          handleTranslate(mergeGap)
-        })
-        .catch(err => console.error("Failed to forget memory:", err))
-      }
-    }
+    if (!apiResponse?.words) return
+    const word = apiResponse.words.find(w => w.id === wordId)
+    if (!word) return
+    fetch(`${BACKEND_URL}/api/forget-memory`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ word_id: word.id })
+    })
+    .then(r => r.json())
+    .then(() => { showToast(`Memory reset for #${word.id}`); handleTranslate(mergeGap) })
+    .catch(console.error)
   }, [apiResponse, mergeGap])
 
-  // Feature 3 — Remove/Delete a box manually
-  const handleRemoveBox = useCallback((wordId) => {
-    setPopover(null)
-    if (!apiResponse || !apiResponse.words) return
-    const word = apiResponse.words.find(w => w.id === wordId)
-    const updatedWords = apiResponse.words.filter(w => w.id !== wordId)
-
-    setApiResponse(prev => ({
-      ...prev,
-      words: updatedWords,
-      word_count: updatedWords.length,
-    }))
-    showToast(`Removed Box #${wordId}`)
-
-    if (word) {
-      fetch(`${BACKEND_URL}/api/remember`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          word_id: word.id,
-          modern_tamil: '__IGNORE__'
-        })
-      }).catch(err => console.error("Failed to memorize ignored box:", err))
-    }
-  }, [apiResponse])
-
-  // Feature 4 — Manually draw & add a new box
-  const [isAddingBox, setIsAddingBox] = useState(false)
-
-  const handleManualBoxAdded = useCallback(async (newBox) => {
-    setIsAddingBox(false)
-    if (!apiResponse || !imageFile) return
-    showToast("Classifying custom character box...")
-    
+  const classifyBoxCrop = useCallback(async (box) => {
+    if (!imageFile) return box
     try {
       let fileToSend = imageFile
       if (displayImageURL && displayImageURL !== imageURL) {
         const res = await fetch(displayImageURL)
         const blob = await res.blob()
-        fileToSend = new File([blob], "region_crop.jpg", { type: "image/jpeg" })
+        fileToSend = new File([blob], 'region_crop.jpg', { type: 'image/jpeg' })
       }
+      const form = new FormData()
+      form.append('file', fileToSend)
+      form.append('x', Math.round(box.x))
+      form.append('y', Math.round(box.y))
+      form.append('w', Math.round(box.w))
+      form.append('h', Math.round(box.h))
+      if (imageFile?.name) form.append('filename', imageFile.name)
 
+      const res = await fetch(`${BACKEND_URL}/api/classify-crop`, { method: 'POST', body: form })
+      const data = await res.json()
+      if (res.ok) {
+        return {
+          ...box,
+          modern_tamil: data.modern_tamil || box.modern_tamil || '?',
+          confidence: data.confidence || 0.85,
+          top3: data.top3 || [],
+        }
+      }
+    } catch (err) {
+      console.error('Classification error:', err)
+    }
+    return box
+  }, [imageFile, displayImageURL, imageURL])
+
+  const handleSplitBox = useCallback(async (wordId) => {
+    setPopover(null)
+    if (!apiResponse || !apiResponse.words) return
+    const target = apiResponse.words.find(w => w.id === wordId)
+    if (!target) return
+
+    showToast(`Classifying split boxes #${wordId}…`)
+    const halfW = Math.max(5, Math.round(target.w / 2))
+    const nextId = (apiResponse.words.reduce((max, w) => Math.max(max, w.id), 0) || 0) + 1
+
+    const rawB1 = { ...target, w: halfW }
+    const rawB2 = { ...target, id: nextId, x: target.x + halfW, w: target.w - halfW }
+
+    // Run both split halves through ResNet classifier!
+    const [classifiedB1, classifiedB2] = await Promise.all([
+      classifyBoxCrop(rawB1),
+      classifyBoxCrop(rawB2)
+    ])
+
+    const unsortedWords = apiResponse.words.flatMap(w => w.id === wordId ? [classifiedB1, classifiedB2] : [w])
+    const updatedWords  = sortInscriptionWords(unsortedWords)
+    const updatedSeq    = updatedWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+    const updatedAlts   = generateAlternativeSentences(updatedWords, corrections)
+
+    setApiResponse(prev => ({
+      ...prev,
+      words: updatedWords,
+      word_count: updatedWords.length,
+      full_sentence: updatedSeq,
+      raw_sentence: updatedSeq,
+      alternative_sentences: updatedAlts,
+    }))
+    showToast(`Split & classified #${classifiedB1.id} (${classifiedB1.modern_tamil}) & #${classifiedB2.id} (${classifiedB2.modern_tamil})`)
+  }, [apiResponse, classifyBoxCrop, corrections])
+
+  const handleBoxesEdited = useCallback(async (newWords) => {
+    if (!apiResponse || !apiResponse.words) return
+    const resizedWord = newWords.find(nw => {
+      const orig = apiResponse.words.find(ow => ow.id === nw.id)
+      return orig && (orig.x !== nw.x || orig.y !== nw.y || orig.w !== nw.w || orig.h !== nw.h)
+    })
+
+    let updatedWords = newWords
+    if (resizedWord) {
+      showToast(`Classifying resized character box #${resizedWord.id}…`)
+      const reClassified = await classifyBoxCrop(resizedWord)
+      updatedWords = newWords.map(w => w.id === reClassified.id ? reClassified : w)
+    }
+
+    updatedWords = sortInscriptionWords(updatedWords)
+    const updatedSeq  = updatedWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+    const updatedAlts = generateAlternativeSentences(updatedWords, corrections)
+
+    setApiResponse(prev => ({
+      ...prev,
+      words: updatedWords,
+      full_sentence: updatedSeq,
+      raw_sentence: updatedSeq,
+      alternative_sentences: updatedAlts,
+    }))
+  }, [apiResponse, classifyBoxCrop, corrections])
+
+  const handleSyncTranslation = useCallback(() => {
+    const rawActiveWords = apiResponse?.words || words
+    if (!rawActiveWords || rawActiveWords.length === 0) return
+    const activeWords = sortInscriptionWords(rawActiveWords)
+    const updatedSentence = activeWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+    const updatedAlts = generateAlternativeSentences(activeWords, corrections)
+
+    setApiResponse(prev => ({
+      ...prev,
+      words: activeWords,
+      raw_sentence: updatedSentence,
+      full_sentence: updatedSentence,
+      alternative_sentences: updatedAlts,
+    }))
+
+    showToast('Synchronized sequence')
+  }, [apiResponse, words, corrections])
+
+  const handleRemoveBox = useCallback((wordId) => {
+    setPopover(null)
+    if (!apiResponse?.words) return
+    const word = apiResponse.words.find(w => w.id === wordId)
+    const updatedWords = sortInscriptionWords(apiResponse.words.filter(w => w.id !== wordId))
+    const updatedSeq   = updatedWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+    const updatedAlts  = generateAlternativeSentences(updatedWords, corrections)
+
+    setApiResponse(prev => ({
+      ...prev,
+      words: updatedWords,
+      word_count: updatedWords.length,
+      full_sentence: updatedSeq,
+      raw_sentence: updatedSeq,
+      alternative_sentences: updatedAlts,
+    }))
+    showToast(`Box #${wordId} removed`)
+    if (word) {
+      fetch(`${BACKEND_URL}/api/remember`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word_id: word.id, modern_tamil: '__IGNORE__' })
+      }).catch(console.error)
+    }
+  }, [apiResponse, corrections])
+
+  const handleManualBoxAdded = useCallback(async (newBox) => {
+    setIsAddingBox(false)
+    if (!apiResponse || !imageFile) return
+    showToast('Classifying character…')
+    try {
+      let fileToSend = imageFile
+      if (displayImageURL && displayImageURL !== imageURL) {
+        const res = await fetch(displayImageURL)
+        const blob = await res.blob()
+        fileToSend = new File([blob], 'region_crop.jpg', { type: 'image/jpeg' })
+      }
       const form = new FormData()
       form.append('file', fileToSend)
       form.append('x', Math.round(newBox.x))
       form.append('y', Math.round(newBox.y))
       form.append('w', Math.round(newBox.w))
       form.append('h', Math.round(newBox.h))
-      if (imageFile && imageFile.name) {
-        form.append('filename', imageFile.name)
-      }
+      if (imageFile?.name) form.append('filename', imageFile.name)
 
-      const res = await fetch(`${BACKEND_URL}/api/classify-crop`, {
-        method: 'POST',
-        body: form
-      })
-      
+      const res = await fetch(`${BACKEND_URL}/api/classify-crop`, { method: 'POST', body: form })
       const data = await res.json()
       if (res.ok) {
         const nextId = (apiResponse.words.reduce((max, w) => Math.max(max, w.id), 0) || 0) + 1
+        const lineForBox = apiResponse.words.find(w => Math.abs((w.y + w.h / 2) - (newBox.y + newBox.h / 2)) < Math.max(w.h, newBox.h) * 0.6)?.line || 1
         const newWord = {
           id: nextId,
-          x: Math.round(newBox.x),
-          y: Math.round(newBox.y),
-          w: Math.round(newBox.w),
-          h: Math.round(newBox.h),
+          x: Math.round(newBox.x), y: Math.round(newBox.y),
+          w: Math.round(newBox.w), h: Math.round(newBox.h),
           modern_tamil: data.modern_tamil || '?',
           confidence: data.confidence || 0.85,
-          line: 1,
-          is_unknown: false
+          line: lineForBox, is_unknown: false,
         }
-        
-        const updatedWords = [...apiResponse.words, newWord].sort((a, b) => a.x - b.x)
+        const updatedWords = sortInscriptionWords([...apiResponse.words, newWord])
+        const updatedSeq   = updatedWords.map(w => corrections[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+        const updatedAlts  = generateAlternativeSentences(updatedWords, corrections)
+
         setApiResponse(prev => ({
           ...prev,
           words: updatedWords,
-          word_count: updatedWords.length
+          word_count: updatedWords.length,
+          full_sentence: updatedSeq,
+          raw_sentence: updatedSeq,
+          alternative_sentences: updatedAlts,
         }))
-        showToast(`Added Box #${newWord.id} (${newWord.modern_tamil})`)
+        showToast(`Added box #${newWord.id} → ${newWord.modern_tamil}`)
       }
     } catch (err) {
-      console.error("Failed to classify custom crop:", err)
-      showToast("Error adding manual box", false)
+      console.error(err)
+      showToast('Error classifying box', false)
     }
-  }, [apiResponse, imageFile, displayImageURL, imageURL])
+  }, [apiResponse, imageFile, displayImageURL, imageURL, corrections])
 
-  // Send corrected crops directly to the backend dataset folders
   async function sendToDataset() {
     if (!apiResponse || !imageFile) return
     const corrected = apiResponse.words
       .filter(w => corrections[w.id] !== undefined)
-      .map(w => ({
-        word_id:      w.id,
-        x: w.x, y: w.y, w: w.w, h: w.h,
-        modern_tamil: corrections[w.id]
-      }))
-
+      .map(w => ({ word_id: w.id, x: w.x, y: w.y, w: w.w, h: w.h, modern_tamil: corrections[w.id] }))
     if (!corrected.length) return
-    showToast("Sending corrected crops to dataset...")
-
+    showToast('Saving to dataset…')
     try {
       const res = await fetch(`${BACKEND_URL}/api/save-dataset-crop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_name:  imageFile.name,
-          corrections: corrected
-        })
+        body: JSON.stringify({ image_name: imageFile.name, corrections: corrected })
       }).then(r => r.json())
-
-      showToast(`Saved ${res.saved_count} crops to dataset folders!`)
-    } catch (err) {
-      showToast("Failed to save to dataset folder", false)
+      showToast(`${res.saved_count} crops saved to dataset`)
+    } catch {
+      showToast('Dataset save failed', false)
     }
   }
 
-  // Filtered words based on confidence threshold
-  const rawWords = apiResponse?.words || []
-  const words = useMemo(() => {
-    if (threshold === 0) return rawWords
-    return rawWords.filter(w => w.confidence >= threshold / 100)
-  }, [rawWords, threshold])
 
-  // Recalculate Modern Tamil Sentence with corrections & thresholds
-  const effectiveFullSentence = useMemo(() => {
-    if (!words.length) return apiResponse?.full_sentence || ''
-    return words
-      .map(w => corrections[w.id] ?? w.modern_tamil)
-      .filter(c => c && c !== '?')
-      .join(' ')
-  }, [words, corrections, apiResponse])
 
-  // Top 10 alternative readings
-  const effectiveAlternatives = useMemo(() => {
-    return apiResponse?.alternative_sentences || []
-  }, [apiResponse])
+  // ── Workspace ─────────────────────────────────────────────────────────────
+  const renderWorkspace = () => (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingTop: 52 }}>
 
-  const hasResult = !!apiResponse && !isLoading
+      {/* Upper Toolbar */}
+      <div style={{
+        flexShrink: 0,
+        height: 52,
+        background: 'var(--surface-1)',
+        borderBottom: '1px solid var(--line)',
+        padding: '0 20px',
+        display: 'flex', alignItems: 'center',
+        gap: 12,
+        overflow: 'hidden',
+      }}>
+        {/* Upload zone */}
+        <div style={{ flex: 1, minWidth: 0, maxWidth: 580 }}>
+          <UploadZone
+            onFileSelect={handleFileSelect}
+            onTranslate={() => handleTranslate(mergeGap)}
+            imageFile={imageFile}
+            imageURL={imageURL}
+            isLoading={isLoading || isRefetching}
+          />
+        </div>
 
-  return (
-    <div className="flex flex-col min-h-screen bg-[#0b0c14] text-slate-100 font-sans">
-      
-      {/* ── Top SaaS Navigation Bar ── */}
-      <Navbar
-        activePage={activePage}
-        setActivePage={setActivePage}
-        theme={theme}
-        toggleTheme={toggleTheme}
-      />
+        {/* Upper Toolbar Action Buttons */}
+        {imageURL && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {/* Crop Region Button */}
+            <button
+              className={regionMode ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => { setRegionMode(r => !r); setSelectedRegion(null) }}
+              style={{ padding: '7px 14px', fontSize: 13 }}
+            >
+              {regionMode ? 'Cancel Selection' : 'Crop Region'}
+            </button>
 
-      {/* ── Toast Notification Popup ── */}
-      {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl border text-xs font-bold shadow-2xl flex items-center gap-3 fade-up ${
-          toast.ok
-            ? 'bg-slate-900/95 border-emerald-500/50 text-emerald-300 shadow-emerald-500/10'
-            : 'bg-slate-900/95 border-rose-500/50 text-rose-300 shadow-rose-500/10'
-        }`}>
-          <span>{toast.ok ? '✓' : '⚠️'}</span>
-          <span>{toast.msg}</span>
+            {/* Add Bounding Box Button */}
+            <button
+              className={isAddingBox ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => setIsAddingBox(a => !a)}
+              title="Click and drag on the image to define a new character bounding box"
+              style={{ padding: '7px 14px', fontSize: 13 }}
+            >
+              <span>{isAddingBox ? 'Drawing Box…' : 'Add Bounding Box'}</span>
+            </button>
+
+            {/* Save Layout Memory Button */}
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                if (!apiResponse?.words) return
+                fetch(`${BACKEND_URL}/api/save-segmentation`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ words: apiResponse.words, image_name: imageFile?.name })
+                })
+                .then(() => showToast('Saved segmentation layout memory'))
+                .catch(() => showToast('Save layout memory failed', false))
+              }}
+              title="Save all current segmentation and character changes to layout memory"
+              style={{ padding: '7px 14px', fontSize: 13, color: '#3da35d', borderColor: 'rgba(61,163,93,0.4)' }}
+            >
+              <span>Save Layout Memory</span>
+            </button>
+          </div>
+        )}
+
+        {/* Export corrections button */}
+        {Object.keys(corrections).length > 0 && (
+          <button
+            className="btn-primary"
+            onClick={sendToDataset}
+            style={{ padding: '7px 14px', fontSize: 13, flexShrink: 0 }}
+          >
+            Export {Object.keys(corrections).length} correction{Object.keys(corrections).length > 1 ? 's' : ''}
+          </button>
+        )}
+      </div>
+
+      {/* Error bar */}
+      {error && (
+        <div style={{
+          flexShrink: 0,
+          padding: '8px 20px',
+          background: 'rgba(142,59,59,0.12)',
+          borderBottom: '1px solid rgba(142,59,59,0.25)',
+          fontSize: 13, color: '#c87474',
+        }}>
+          {error}
         </div>
       )}
 
-      {/* ── Main View Router ── */}
-      {activePage === 'landing' ? (
-        <LandingPage
-          onSelectSample={handleSelectSample}
-          onLaunchWorkspace={() => setActivePage('translator')}
-        />
-      ) : activePage === 'memory' ? (
-        <div className="flex-1 min-h-0">
-          <MemoryStudio />
-        </div>
-      ) : activePage === 'dataset' ? (
-        <div className="flex-1 min-h-0">
-          <DatasetStudio />
-        </div>
-      ) : (
-        /* ── Workspace Studio ── */
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          
-          {/* Workspace Toolbar Controls */}
-          <div className="flex-shrink-0 h-14 bg-[#121422] border-b border-white/10 px-4 sm:px-6 flex items-center justify-between gap-4 overflow-x-auto">
-            <div className="flex items-center gap-3">
-              <UploadZone
-                onFileSelect={handleFileSelect}
-                onTranslate={() => handleTranslate(mergeGap)}
-                imageFile={imageFile}
-                imageURL={imageURL}
-                isLoading={isLoading || isRefetching}
-              />
+      {/* Workspace Main Scrollable Split Body */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto', background: 'var(--base)', position: 'relative' }}>
+        {(isLoading || isRefetching) && (
+          <LoadingOverlay message={isRefetching ? 'Re-analysing…' : 'Segmenting inscription…'} />
+        )}
 
-              {imageURL && (
-                <button
-                  onClick={() => { setRegionMode(r => !r); setSelectedRegion(null); }}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                    regionMode
-                      ? 'bg-orange-500/20 text-orange-400 border-orange-500/40 shadow-lg shadow-orange-500/20'
-                      : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
-                  }`}
-                >
-                  <span>{regionMode ? '✂' : '🔲'}</span>
-                  <span>{regionMode ? 'Region Crop Active' : 'Select Region'}</span>
-                </button>
-              )}
-            </div>
+        {/* Top Section: Image Views (Left) + Character Breakdown Sidebar (Right 340px) */}
+        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
-            {/* Threshold Slider & Action Buttons */}
-            {hasResult && (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-white/5 px-3 py-1 rounded-lg border border-white/10">
-                  <span className="text-[11px] font-semibold text-slate-400">Confidence:</span>
-                  <input
-                    type="range" min="0" max="95" value={threshold}
-                    onChange={e => setThreshold(Number(e.target.value))}
-                    className="w-20 accent-orange-500 cursor-pointer"
-                  />
-                  <span className="text-xs font-bold text-amber-400 min-w-[32px] text-right">{threshold}%</span>
-                </div>
-
-                {Object.keys(corrections).length > 0 && (
-                  <button
-                    onClick={sendToDataset}
-                    className="px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-slate-950 font-bold text-xs shadow-md transition-colors"
-                  >
-                    Send Corrections ({Object.keys(corrections).length})
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Workspace Body Grid */}
-          <div className="flex-1 flex overflow-hidden">
-            
-            {/* Left Canvas Panel */}
-            <div className="w-full lg:w-[58%] border-r border-white/10 flex flex-col bg-[#090a10] relative">
-              {isLoading && <LoadingOverlay message="Analyzing Inscription with Smart-Tiled YOLO Vision..." />}
-              
-              {displayImageURL ? (
-                regionMode ? (
+          {/* ── Left Panel: Image Views Area ──── */}
+          <div style={{
+            flex: '1',
+            minWidth: 0,
+            borderRight: '1px solid var(--line)',
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--base)',
+            position: 'relative',
+          }}>
+            {displayImageURL ? (
+              regionMode ? (
+                <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                   <RegionSelector
                     imageSrc={imageURL}
                     onConfirmCrop={(region) => {
@@ -509,82 +738,308 @@ export default function App() {
                     }}
                     onCancel={() => setRegionMode(false)}
                   />
-                ) : (
-                  <InscriptionCanvas
-                    imageSrc={displayImageURL}
-                    words={words}
-                    hoveredWordId={hoveredWordId}
-                    setHoveredWordId={setHoveredWordId}
-                    corrections={corrections}
-                    onWordClick={(word, e) => {
-                      const rect = e.target.getBoundingClientRect()
-                      setPopover({ word, x: rect.left + rect.width / 2, y: rect.bottom + 8 })
-                    }}
-                    isAddingBox={isAddingBox}
-                    setIsAddingBox={setIsAddingBox}
-                    onManualBoxAdded={handleManualBoxAdded}
-                  />
-                )
+                </div>
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-3xl mb-4">
-                    🪨
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  
+                  {/* Image View Mode & Window Adjustments Switcher Header */}
+                  <div style={{
+                    flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 14px',
+                    background: 'var(--surface-2)',
+                    borderBottom: '1px solid var(--line)',
+                    gap: 12, flexWrap: 'wrap',
+                  }}>
+                    {/* Left: View Mode Switcher */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="label" style={{ color: 'var(--fg-3)' }}>View Mode</span>
+                      <div style={{ display: 'flex', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: 2 }}>
+                        {[
+                          ['both', 'Two Images (Stacked)'],
+                          ['detection', 'Detection View'],
+                          ['original', 'Original + 4x Zoom'],
+                        ].map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setCanvasViewMode(mode)}
+                            style={{
+                              background: canvasViewMode === mode ? 'var(--surface-4)' : 'transparent',
+                              border: 'none',
+                              color: canvasViewMode === mode ? 'var(--fg)' : 'var(--fg-3)',
+                              fontSize: 11, fontWeight: 600,
+                              padding: '3px 10px', borderRadius: 4,
+                              cursor: 'pointer',
+                              transition: 'all var(--dur-fast)',
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Right: Window Fit & Zoom Adjustment Toolbar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      {/* Window Fit Mode Toggle */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="label" style={{ color: 'var(--fg-3)', fontSize: 11 }}>Window Fit</span>
+                        <div style={{ display: 'flex', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: 2 }}>
+                          <button
+                            onClick={() => setImageFitMode('fit')}
+                            style={{
+                              background: imageFitMode === 'fit' ? 'var(--surface-4)' : 'transparent',
+                              border: 'none',
+                              color: imageFitMode === 'fit' ? 'var(--copper-light)' : 'var(--fg-3)',
+                              fontSize: 11, fontWeight: 600,
+                              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+                            }}
+                          >
+                            Auto-Fit Window
+                          </button>
+                          <button
+                            onClick={() => setImageFitMode('full')}
+                            style={{
+                              background: imageFitMode === 'full' ? 'var(--surface-4)' : 'transparent',
+                              border: 'none',
+                              color: imageFitMode === 'full' ? 'var(--copper-light)' : 'var(--fg-3)',
+                              fontSize: 11, fontWeight: 600,
+                              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
+                            }}
+                          >
+                            Full Height
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Height Preset Selector (visible when fit mode === 'fit') */}
+                      {imageFitMode === 'fit' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <span className="label" style={{ color: 'var(--fg-4)', fontSize: 11 }}>Height</span>
+                          <select
+                            value={windowHeight}
+                            onChange={(e) => setWindowHeight(Number(e.target.value))}
+                            style={{
+                              background: 'var(--surface-3)',
+                              color: 'var(--fg)',
+                              border: '1px solid var(--line)',
+                              borderRadius: 4,
+                              fontSize: 11,
+                              padding: '2px 6px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <option value={380}>380px (Compact)</option>
+                            <option value={480}>480px (Standard)</option>
+                            <option value={620}>620px (Expanded)</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Zoom Adjustment Controls */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 4px' }}>
+                        <button
+                          onClick={() => setZoomLevel(z => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))}
+                          title="Zoom Out"
+                          style={{ background: 'transparent', border: 'none', color: 'var(--fg)', fontSize: 12, padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          -
+                        </button>
+                        <span style={{ fontSize: 11, color: 'var(--fg-2)', minWidth: 36, textAlign: 'center', fontWeight: 600 }}>
+                          {Math.round(zoomLevel * 100)}%
+                        </span>
+                        <button
+                          onClick={() => setZoomLevel(z => Math.min(2.5, Math.round((z + 0.1) * 10) / 10))}
+                          title="Zoom In"
+                          style={{ background: 'transparent', border: 'none', color: 'var(--fg)', fontSize: 12, padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}
+                        >
+                          +
+                        </button>
+                        {zoomLevel !== 1 && (
+                          <button
+                            onClick={() => setZoomLevel(1.0)}
+                            title="Reset Zoom"
+                            style={{ background: 'var(--surface-4)', border: 'none', color: 'var(--copper-light)', fontSize: 10, padding: '2px 6px', borderRadius: 4, cursor: 'pointer', marginLeft: 2 }}
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+
+                      {isCroppedView && (
+                        <button
+                          className="btn-ghost"
+                          onClick={handleResetToFullImage}
+                          style={{ fontSize: 11, color: 'var(--copper)' }}
+                        >
+                          Reset to Full Image
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-1 font-heading">No Inscription Loaded</h3>
-                  <p className="text-xs text-slate-400 max-w-sm">
-                    Upload an image using the top bar or try one of our pre-loaded historical sample inscriptions.
+
+                  {/* Left Panel Scrollable Container: Images Only */}
+                  <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                    
+                    {/* Image 1: Bounding Box Detection View */}
+                    {(canvasViewMode === 'both' || canvasViewMode === 'detection') && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div className="label" style={{ color: 'var(--copper)', letterSpacing: '0.08em' }}>
+                          1. Detection View (Bounding Boxes & Character Labels)
+                        </div>
+                        <InscriptionCanvas
+                          imageURL={displayImageURL}
+                          words={words}
+                          imageWidth={apiResponse?.image_width}
+                          imageHeight={apiResponse?.image_height}
+                          hoveredWordId={hoveredWordId}
+                          onWordHover={setHoveredWordId}
+                          onWordClick={(wordId, x, y) => {
+                            const word = words.find(w => w.id === wordId)
+                            if (word) setPopover({ word, x, y })
+                          }}
+                          onBoxesEdited={handleBoxesEdited}
+                          onAddBoxComplete={handleManualBoxAdded}
+                          isAddingBox={isAddingBox}
+                          threshold={0}
+                          corrections={corrections}
+                          maxHeight={imageFitMode === 'fit' ? windowHeight : null}
+                          zoomLevel={zoomLevel}
+                        />
+                      </div>
+                    )}
+
+                    {/* Image 2: Clean Original Image with 4x Zoom Lens Magnifier */}
+                    {(canvasViewMode === 'both' || canvasViewMode === 'original') && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div className="label" style={{ color: 'var(--fg-3)', letterSpacing: '0.08em' }}>
+                          2. Original Inscription (Hover character for Spotlight & 4x Magnifier)
+                        </div>
+                        <OriginalImageViewer
+                          imageURL={displayImageURL}
+                          words={words}
+                          imageWidth={apiResponse?.image_width}
+                          imageHeight={apiResponse?.image_height}
+                          hoveredWordId={hoveredWordId}
+                          onWordHover={setHoveredWordId}
+                          onWordClick={(wordId, x, y) => {
+                            const word = words.find(w => w.id === wordId)
+                            if (word) setPopover({ word, x, y })
+                          }}
+                          corrections={corrections}
+                          maxHeight={imageFitMode === 'fit' ? windowHeight : null}
+                          zoomLevel={zoomLevel}
+                        />
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              )
+            ) : (
+              /* Empty state */
+              <div style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 16, padding: 48, textAlign: 'center',
+              }}>
+                <svg width="56" height="56" viewBox="0 0 56 56" fill="none" style={{ opacity: 0.25 }}>
+                  <rect x="1" y="1" width="54" height="54" rx="10" stroke="var(--fg)" strokeWidth="1.5"/>
+                  <text x="50%" y="54%" dominantBaseline="middle" textAnchor="middle"
+                    style={{ fontFamily: '"Noto Sans Tamil", serif', fontSize: 28, fill: 'var(--fg)' }}>
+                    அ
+                  </text>
+                </svg>
+                <div>
+                  <p style={{ fontSize: 15, fontWeight: 600, color: 'var(--fg-2)', marginBottom: 4 }}>
+                    Upload an inscription
+                  </p>
+                  <p style={{ fontSize: 13, color: 'var(--fg-4)', maxWidth: 280 }}>
+                    Drag an image into the toolbar above, or click Browse to load a stone carving or palm-leaf scan.
                   </p>
                 </div>
-              )}
+              </div>
+            )}
+          </div>
 
-              {popover && (
-                <CorrectionPopover
-                  word={popover.word}
-                  position={{ x: popover.x, y: popover.y }}
-                  currentCorrection={corrections[popover.word.id]}
-                  onCorrect={(newChar) => {
-                    handleCorrect(popover.word.id, newChar)
-                    setPopover(null)
-                  }}
-                  onForgetMemory={() => handleForgetMemory(popover.word.id)}
-                  onRemoveBox={() => handleRemoveBox(popover.word.id)}
-                  onClose={() => setPopover(null)}
-                />
-              )}
-            </div>
-
-            {/* Right Panel: Recognized Symbols & AI Sentence Breakdown */}
-            <div className="hidden lg:flex w-[42%] flex-col bg-[#0e101b] overflow-y-auto p-4 gap-4">
-              <TranslationPanel
-                words={words}
-                hoveredWordId={hoveredWordId}
-                setHoveredWordId={setHoveredWordId}
-                corrections={corrections}
-                onWordClick={(word, e) => {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  setPopover({ word, x: rect.left, y: rect.bottom + 4 })
-                }}
-              />
-
-              <SentenceOutput
-                fullSentence={effectiveFullSentence}
-                rawSentence={apiResponse?.raw_sentence}
-                aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence}
-                aiMeaning={aiMeaningState || apiResponse?.ai_meaning}
-                aiWordBreakdown={aiWordBreakdownState.length ? aiWordBreakdownState : apiResponse?.ai_word_breakdown}
-                romanSentence={apiResponse?.roman_sentence}
-                alternativeSentences={effectiveAlternatives}
-                alternativeRomanSentences={apiResponse?.alternative_roman_sentences || []}
-                onRefineAI={handleRefineAI}
-                isRefiningAI={isRefiningAI}
-              />
-            </div>
-
+          {/* ── Right Panel: Pinned Character Breakdown Sidebar (340px) ──────────── */}
+          <div style={{
+            flex: '0 0 340px',
+            display: 'flex', flexDirection: 'column',
+            background: 'var(--base)',
+          }}>
+            <TranslationPanel
+              words={words}
+              hoveredWordId={hoveredWordId}
+              onWordHover={setHoveredWordId}
+              threshold={0}
+              corrections={corrections}
+              onWordClick={(wordId, x, y) => {
+                const word = words.find(w => w.id === wordId)
+                if (word) setPopover({ word, x, y })
+              }}
+              onRemoveBox={handleRemoveBox}
+            />
           </div>
 
         </div>
-      )}
 
+        {/* ── Full-Width Extended Bottom Area: Translation & AI Analysis Window (100% Width) ── */}
+        {displayImageURL && (
+          <div style={{
+            width: '100%',
+            padding: 16,
+            boxSizing: 'border-box',
+            borderTop: '1px solid var(--line)',
+            background: 'var(--surface-1)',
+          }}>
+            <SentenceOutput
+              fullSentence={effectiveFullSentence}
+              rawSentence={apiResponse?.raw_sentence}
+              aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence}
+              englishTranslation={aiEnglishTranslationState || apiResponse?.english_translation}
+              aiMeaning={aiMeaningState || apiResponse?.ai_meaning}
+              englishMeaning={aiEnglishMeaningState || apiResponse?.english_meaning}
+              aiWordBreakdown={aiWordBreakdownState.length ? aiWordBreakdownState : (apiResponse?.ai_word_breakdown || [])}
+              alternativeSentences={effectiveAlternatives}
+              onRefineAI={handleRefineAI}
+              onSync={handleSyncTranslation}
+              isRefiningAI={isRefiningAI}
+            />
+          </div>
+        )}
+
+        {/* Correction popover */}
+        {popover && (
+          <CorrectionPopover
+            word={popover.word}
+            position={{ x: popover.x, y: popover.y }}
+            onCorrect={(wordId, newChar) => { handleCorrect(wordId, newChar); setPopover(null) }}
+            onClose={() => setPopover(null)}
+            onForgetMemory={handleForgetMemory}
+            onRemoveBox={handleRemoveBox}
+            onSplitBox={handleSplitBox}
+          />
+        )}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100dvh' }}>
+      <Navbar activePage={activePage} setActivePage={setActivePage} theme={theme} onToggleTheme={toggleTheme} />
+
+      {toast && <Toast msg={toast.msg} ok={toast.ok} />}
+
+      {activePage === 'landing' ? (
+        <LandingPage onLaunchWorkspace={() => setActivePage('translator')} />
+      ) : activePage === 'memory' ? (
+        <div style={{ flex: 1, paddingTop: 52 }}><MemoryStudio /></div>
+      ) : activePage === 'dataset' ? (
+        <div style={{ flex: 1, paddingTop: 52 }}><DatasetStudio /></div>
+      ) : (
+        renderWorkspace()
+      )}
     </div>
   )
 }

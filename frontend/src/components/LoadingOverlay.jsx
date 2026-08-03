@@ -1,63 +1,42 @@
-export default function LoadingOverlay() {
+export default function LoadingOverlay({ message }) {
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      zIndex: 9999,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'rgba(7, 7, 9, 0.85)',
-      backdropFilter: 'blur(6px)',
-    }}>
-      {/* Animated ring */}
-      <div style={{ position: 'relative', width: 56, height: 56, marginBottom: 22 }}>
-        <svg
-          className="spinner"
-          width="56" height="56" viewBox="0 0 56 56" fill="none"
-          style={{ position: 'absolute', top: 0, left: 0 }}
-        >
-          <circle cx="28" cy="28" r="24" stroke="var(--border-light)" strokeWidth="3"/>
-          <path
-            d="M28 4 a24 24 0 0 1 24 24"
-            stroke="var(--accent)"
-            strokeWidth="3"
-            strokeLinecap="round"
+    <>
+      {/* Top progress line */}
+      <div className="loading-line-track">
+        <div className="loading-line-fill" />
+      </div>
+
+      {/* Centered status text */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 50,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'rgba(10, 10, 10, 0.72)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        gap: 12,
+      }}>
+        {/* Thin animated ring */}
+        <svg width="40" height="40" viewBox="0 0 40 40" fill="none"
+          style={{ flexShrink: 0 }}>
+          <circle cx="20" cy="20" r="16"
+            stroke="var(--surface-4)" strokeWidth="2" />
+          <path d="M20 4 a16 16 0 0 1 16 16"
+            stroke="var(--copper)" strokeWidth="2" strokeLinecap="round"
+            style={{ animation: 'spin 0.9s linear infinite', transformOrigin: '20px 20px' }}
           />
         </svg>
-        <div style={{
-          position: 'absolute', inset: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 20,
-        }}>🪨</div>
+
+        <p className="label" style={{ color: 'var(--fg-3)', letterSpacing: '0.12em' }}>
+          {message || 'Analysing inscription'}
+        </p>
+
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
-
-      {/* Tamil text */}
-      <p className="tamil-text" style={{
-        fontSize: 18, fontWeight: 600,
-        color: 'var(--text-primary)',
-        marginBottom: 6,
-      }}>
-        பகுப்பாய்வு செய்கிறது...
-      </p>
-
-      {/* Sub text */}
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-        Detecting and classifying words…
-      </p>
-
-      {/* Progress dots */}
-      <div style={{ display: 'flex', gap: 5, marginTop: 20 }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: 'var(--accent)',
-            animation: `pulse-ring 1.2s ${i * 0.2}s ease-in-out infinite`,
-            opacity: 0.7,
-          }}/>
-        ))}
-      </div>
-    </div>
+    </>
   )
 }

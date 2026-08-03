@@ -1,269 +1,300 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 
 export default function RegionSelector({
   imageURL,
-  imageNaturalWidth,
-  imageNaturalHeight,
+  imageSrc,
+  onConfirmCrop,
   onRegionSelect,
-  onClear,
-  selectedRegion,
+  onCancel,
+  selectedRegion: propSelectedRegion,
 }) {
+  const src = imageURL || imageSrc
   const containerRef = useRef(null)
   const imgRef       = useRef(null)
   const canvasRef    = useRef(null)
 
-  const [dragging, setDragging] = useState(false)
-  const [startPx,  setStartPx]  = useState(null)
-  const [endPx,    setEndPx]    = useState(null)
+  const [regionPct, setRegionPct]           = useState(propSelectedRegion || null)
+  const [dragging, setDragging]             = useState(false)
+  const [dragStart, setDragStart]           = useState(null)
+  const [activeHandle, setActiveHandle]     = useState(null)
+  const [resizeStartRegion, setResizeStartRegion] = useState(null)
 
-  const [resizingHandle, setResizingHandle] = useState(null)
-  const [resizeStart, setResizeStart] = useState(null)
-  const [hoverHandle, setHoverHandle] = useState(null)
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current
+    const img    = imgRef.current
+    if (!canvas || !img) return
 
-  const HANDLE_SIZE = 12
+    const rect = img.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
 
-  function getHandles(region, cw, ch, imgW, imgH) {
-    if (!region) return []
-    const sx = cw / imgW
-    const sy = ch / imgH
-    const rx = region.x * sx
-    const ry = region.y * sy
-    const rw = region.w * sx
-    const rh = region.h * sy
+    canvas.width  = rect.width
+    canvas.height = rect.height
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, rect.width, rect.height)
 
-    return [
+    if (!regionPct) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+      ctx.fillRect(0, 0, rect.width, rect.height)
+      ctx.fillStyle = '#ffffff'
+      ctx.font = '500 13px Inter, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('Click and drag across the image to crop a region for analysis', rect.width / 2, rect.height / 2)
+      return
+    }
+
+    const rx = (regionPct.x / 100) * rect.width
+    const ry = (regionPct.y / 100) * rect.height
+    const rw = (regionPct.w / 100) * rect.width
+    const rh = (regionPct.h / 100) * rect.height
+
+    // Darken background outside crop box
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)'
+    ctx.fillRect(0, 0, rect.width, ry)
+    ctx.fillRect(0, ry + rh, rect.width, rect.height - ry - rh)
+    ctx.fillRect(0, ry, rx, rh)
+    ctx.fillRect(rx + rw, ry, rect.width - rx - rw, rh)
+
+    // Highlight border around region
+    ctx.strokeStyle = '#c8865a'
+    ctx.lineWidth = 2
+    ctx.setLineDash([6, 4])
+    ctx.strokeRect(rx, ry, rw, rh)
+    ctx.setLineDash([])
+
+    // Handles
+    const handles = [
+      { id: 'nw', x: rx, y: ry },
+      { id: 'ne', x: rx + rw, y: ry },
+      { id: 'sw', x: rx, y: ry + rh },
+      { id: 'se', x: rx + rw, y: ry + rh },
+      { id: 'n',  x: rx + rw / 2, y: ry },
+      { id: 's',  x: rx + rw / 2, y: ry + rh },
+      { id: 'w',  x: rx, y: ry + rh / 2 },
+      { id: 'e',  x: rx + rw, y: ry + rh / 2 },
+    ]
+
+    ctx.fillStyle   = '#ffffff'
+    ctx.strokeStyle = '#c8865a'
+    ctx.lineWidth   = 1.5
+    const hw = 8
+    handles.forEach((h) => {
+      ctx.fillRect(h.x - hw / 2, h.y - hw / 2, hw, hw)
+      ctx.strokeRect(h.x - hw / 2, h.y - hw / 2, hw, hw)
+    })
+
+    // Label tag
+    ctx.fillStyle = '#c8865a'
+    ctx.font = '600 11px Inter, sans-serif'
+    ctx.textAlign = 'left'
+    ctx.fillText('Selected Crop Area', rx + 6, ry > 22 ? ry - 6 : ry + 16)
+  }, [regionPct])
+
+  useEffect(() => { draw() }, [draw])
+
+  useEffect(() => {
+    const obs = new ResizeObserver(() => draw())
+    if (containerRef.current) obs.observe(containerRef.current)
+    return () => obs.disconnect()
+  }, [draw])
+
+  function getHitHandle(px, py) {
+    if (!regionPct || !canvasRef.current) return null
+    const rect = canvasRef.current.getBoundingClientRect()
+    const rx = (regionPct.x / 100) * rect.width
+    const ry = (regionPct.y / 100) * rect.height
+    const rw = (regionPct.w / 100) * rect.width
+    const rh = (regionPct.h / 100) * rect.height
+
+    const handles = [
       { id: 'nw', x: rx, y: ry, cursor: 'nwse-resize' },
       { id: 'ne', x: rx + rw, y: ry, cursor: 'nesw-resize' },
       { id: 'sw', x: rx, y: ry + rh, cursor: 'nesw-resize' },
       { id: 'se', x: rx + rw, y: ry + rh, cursor: 'nwse-resize' },
-      { id: 'n', x: rx + rw/2, y: ry, cursor: 'ns-resize' },
-      { id: 's', x: rx + rw/2, y: ry + rh, cursor: 'ns-resize' },
-      { id: 'e', x: rx + rw, y: ry + rh/2, cursor: 'ew-resize' },
-      { id: 'w', x: rx, y: ry + rh/2, cursor: 'ew-resize' },
+      { id: 'n',  x: rx + rw / 2, y: ry, cursor: 'ns-resize' },
+      { id: 's',  x: rx + rw / 2, y: ry + rh, cursor: 'ns-resize' },
+      { id: 'w',  x: rx, y: ry + rh / 2, cursor: 'ew-resize' },
+      { id: 'e',  x: rx + rw, y: ry + rh / 2, cursor: 'ew-resize' },
     ]
+
+    const tol = 12
+    return handles.find((h) => Math.abs(px - h.x) <= tol && Math.abs(py - h.y) <= tol) || null
   }
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const img    = imgRef.current
-    if (!canvas || !img || img.naturalWidth === 0) return
-
-    const { width, height } = img.getBoundingClientRect()
-    canvas.width  = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d')
-    ctx.clearRect(0, 0, width, height)
-
-    if (dragging && !resizingHandle && startPx && endPx) {
-      drawRect(ctx, startPx, endPx, width, height)
-      return
-    }
-
-    if (selectedRegion && imageNaturalWidth && imageNaturalHeight) {
-      const sx = width  / imageNaturalWidth
-      const sy = height / imageNaturalHeight
-      const rx = selectedRegion.x * sx
-      const ry = selectedRegion.y * sy
-      const rw = selectedRegion.w * sx
-      const rh = selectedRegion.h * sy
-
-      ctx.fillStyle = 'rgba(0,0,0,0.45)'
-      ctx.fillRect(0, 0, width, ry)
-      ctx.fillRect(0, ry + rh, width, height - ry - rh)
-      ctx.fillRect(0, ry, rx, rh)
-      ctx.fillRect(rx + rw, ry, width - rx - rw, rh)
-
-      ctx.save()
-      ctx.strokeStyle = '#f97316'
-      ctx.shadowColor = '#f97316'
-      ctx.shadowBlur  = 10
-      ctx.lineWidth   = 2.5
-      ctx.setLineDash([6, 4])
-      ctx.strokeRect(rx, ry, rw, rh)
-      ctx.restore()
-
-      // Draw handles
-      const handles = getHandles(selectedRegion, width, height, imageNaturalWidth, imageNaturalHeight)
-      ctx.fillStyle = '#fff'
-      ctx.strokeStyle = '#f97316'
-      ctx.lineWidth = 1.5
-      for (const h of handles) {
-        ctx.fillRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE)
-        ctx.strokeRect(h.x - HANDLE_SIZE/2, h.y - HANDLE_SIZE/2, HANDLE_SIZE, HANDLE_SIZE)
-      }
-
-      ctx.fillStyle = '#f97316'
-      ctx.font      = 'bold 11px Inter, sans-serif'
-      ctx.fillText('Selected Region', rx + 4, ry > 18 ? ry - 4 : ry + 16)
-    }
-  }, [dragging, startPx, endPx, selectedRegion, imageNaturalWidth, imageNaturalHeight, resizingHandle])
-
-  function drawRect(ctx, a, b, cw, ch) {
-    const x = Math.min(a.x, b.x)
-    const y = Math.min(a.y, b.y)
-    const w = Math.abs(b.x - a.x)
-    const h = Math.abs(b.y - a.y)
-    if (w < 5 || h < 5) return
-    ctx.fillStyle = 'rgba(0,0,0,0.4)'
-    ctx.fillRect(0, 0, cw, y)
-    ctx.fillRect(0, y + h, cw, ch - y - h)
-    ctx.fillRect(0, y, x, h)
-    ctx.fillRect(x + w, y, cw - x - w, h)
-    ctx.save()
-    ctx.strokeStyle = '#f97316'
-    ctx.shadowColor = '#f97316'
-    ctx.shadowBlur  = 8
-    ctx.lineWidth   = 2
-    ctx.setLineDash([6, 4])
-    ctx.strokeRect(x, y, w, h)
-    ctx.restore()
-  }
-
-  function getCanvasPos(e) {
-    const rect = canvasRef.current.getBoundingClientRect()
-    return {
-      x: Math.max(0, Math.min(e.clientX - rect.left, rect.width)),
-      y: Math.max(0, Math.min(e.clientY - rect.top,  rect.height)),
-    }
-  }
-
-  function onMouseDown(e) {
+  function handlePointerDown(e) {
     e.preventDefault()
-    const pos = getCanvasPos(e)
-    
-    if (selectedRegion && hoverHandle) {
+    const rect = canvasRef.current.getBoundingClientRect()
+    const px = e.clientX - rect.left
+    const py = e.clientY - rect.top
+
+    const hit = getHitHandle(px, py)
+    if (hit) {
+      setActiveHandle(hit.id)
+      setResizeStartRegion({ ...regionPct })
+      setDragStart({ x: px, y: py })
       setDragging(true)
-      setResizingHandle(hoverHandle)
-      setResizeStart({ ...selectedRegion })
-      setStartPx(pos)
       return
     }
 
     setDragging(true)
-    setResizingHandle(null)
-    setStartPx(pos)
-    setEndPx(pos)
-    onClear()
+    setActiveHandle(null)
+    setDragStart({ x: px, y: py })
+    const startXpct = Math.max(0, Math.min(100, (px / rect.width) * 100))
+    const startYpct = Math.max(0, Math.min(100, (py / rect.height) * 100))
+    setRegionPct({ x: startXpct, y: startYpct, w: 0, h: 0 })
   }
 
-  function onMouseMove(e) {
-    const pos = getCanvasPos(e)
+  function handlePointerMove(e) {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const px = e.clientX - rect.left
+    const py = e.clientY - rect.top
 
     if (!dragging) {
-      if (selectedRegion) {
-        const { width, height } = canvasRef.current.getBoundingClientRect()
-        const handles = getHandles(selectedRegion, width, height, imageNaturalWidth, imageNaturalHeight)
-        const hit = handles.find(h => 
-          Math.abs(pos.x - h.x) <= HANDLE_SIZE && Math.abs(pos.y - h.y) <= HANDLE_SIZE
-        )
-        setHoverHandle(hit ? hit.id : null)
-        if (canvasRef.current) {
-          canvasRef.current.style.cursor = hit ? hit.cursor : 'crosshair'
-        }
+      const hit = getHitHandle(px, py)
+      canvas.style.cursor = hit ? hit.cursor : 'crosshair'
+      return
+    }
+
+    if (activeHandle && resizeStartRegion && dragStart) {
+      const dxPct = ((px - dragStart.x) / rect.width) * 100
+      const dyPct = ((py - dragStart.y) / rect.height) * 100
+
+      let { x, y, w, h } = resizeStartRegion
+      if (activeHandle.includes('n')) { y += dyPct; h -= dyPct }
+      if (activeHandle.includes('s')) { h += dyPct }
+      if (activeHandle.includes('w')) { x += dxPct; w -= dxPct }
+      if (activeHandle.includes('e')) { w += dxPct }
+
+      if (w > 2 && h > 2) {
+        x = Math.max(0, Math.min(100 - w, x))
+        y = Math.max(0, Math.min(100 - h, y))
+        setRegionPct({ x, y, w, h })
       }
       return
     }
 
-    if (resizingHandle && resizeStart) {
-      const dx = pos.x - startPx.x
-      const dy = pos.y - startPx.y
-      
-      const canvas = canvasRef.current
-      const { width, height } = canvas.getBoundingClientRect()
-      const scaleX = imageNaturalWidth / width
-      const scaleY = imageNaturalHeight / height
-      
-      const ndx = Math.round(dx * scaleX)
-      const ndy = Math.round(dy * scaleY)
+    if (dragStart) {
+      const x1 = Math.min(dragStart.x, px)
+      const y1 = Math.min(dragStart.y, py)
+      const wPx = Math.abs(px - dragStart.x)
+      const hPx = Math.abs(py - dragStart.y)
 
-      let { x, y, w, h } = resizeStart
-      if (resizingHandle.includes('n')) { y += ndy; h -= ndy }
-      if (resizingHandle.includes('s')) { h += ndy }
-      if (resizingHandle.includes('w')) { x += ndx; w -= ndx }
-      if (resizingHandle.includes('e')) { w += ndx }
+      const x = Math.max(0, Math.min(100, (x1 / rect.width) * 100))
+      const y = Math.max(0, Math.min(100, (y1 / rect.height) * 100))
+      const w = Math.min(100 - x, (wPx / rect.width) * 100)
+      const h = Math.min(100 - y, (hPx / rect.height) * 100)
 
-      // Keep minimum size 10x10 and prevent negative w/h
-      if (w < 10) { w = 10; x = resizingHandle.includes('w') ? resizeStart.x + resizeStart.w - 10 : x }
-      if (h < 10) { h = 10; y = resizingHandle.includes('n') ? resizeStart.y + resizeStart.h - 10 : y }
-
-      // Restrict within image bounds
-      x = Math.max(0, Math.min(x, imageNaturalWidth - w))
-      y = Math.max(0, Math.min(y, imageNaturalHeight - h))
-
-      onRegionSelect({ x, y, w, h })
-      return
+      setRegionPct({ x, y, w, h })
     }
-
-    setEndPx(pos)
   }
 
-  function onMouseUp(e) {
-    if (!dragging) return
+  function handlePointerUp() {
     setDragging(false)
-    
-    if (resizingHandle) {
-      setResizingHandle(null)
-      return
+    setActiveHandle(null)
+    setDragStart(null)
+  }
+
+  function handleConfirm() {
+    if (!regionPct || regionPct.w < 2 || regionPct.h < 2) return
+    const callback = onConfirmCrop || onRegionSelect
+    if (callback) {
+      callback(regionPct)
     }
+  }
 
-    const endPos = getCanvasPos(e)
-    const canvas = canvasRef.current
-    if (!canvas || !imageNaturalWidth) return
-    const { width, height } = canvas.getBoundingClientRect()
-    const scaleX = imageNaturalWidth  / width
-    const scaleY = imageNaturalHeight / height
-
-    const x = Math.round(Math.min(startPx.x, endPos.x) * scaleX)
-    const y = Math.round(Math.min(startPx.y, endPos.y) * scaleY)
-    const w = Math.round(Math.abs(endPos.x - startPx.x) * scaleX)
-    const h = Math.round(Math.abs(endPos.y - startPx.y) * scaleY)
-
-    if (w > 10 && h > 10) {
-      onRegionSelect({ x, y, w, h })
-    } else {
-      onClear()
-    }
-    setStartPx(null)
-    setEndPx(null)
+  function handleReset() {
+    setRegionPct(null)
   }
 
   return (
-    <div ref={containerRef} style={{
-      position: 'relative',
-      width: '100%',
-    }}>
-      <img
-        ref={imgRef}
-        src={imageURL}
-        alt="Select region"
-        onLoad={() => {
-          // trigger redraw on load
-          setStartPx(s => s)
-        }}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%' }}>
+      {/* Top action bar for region selection */}
+      <div style={{
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '10px 16px',
+        background: 'var(--surface-2)',
+        borderBottom: '1px solid var(--line)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="label" style={{ color: 'var(--copper)' }}>Region Crop Mode</span>
+          <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
+            Drag on image to select target region
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {regionPct && (
+            <button className="btn-ghost" onClick={handleReset} style={{ fontSize: 12 }}>
+              Reset crop
+            </button>
+          )}
+          <button className="btn-secondary" onClick={onCancel} style={{ padding: '5px 12px', fontSize: 12 }}>
+            Cancel
+          </button>
+          <button
+            className="btn-primary"
+            disabled={!regionPct || regionPct.w < 2 || regionPct.h < 2}
+            onClick={handleConfirm}
+            style={{ padding: '5px 16px', fontSize: 12 }}
+          >
+            Analyse Crop Region
+          </button>
+        </div>
+      </div>
+
+      {/* Interactive Canvas container */}
+      <div
+        ref={containerRef}
         style={{
-          display: 'block',
-          width: '100%',
-          height: 'auto',
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          userSelect: 'none',
-          pointerEvents: 'none',
+          position: 'relative',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'flex-start',
+          padding: 16,
+          background: 'var(--base)',
         }}
-      />
-      <canvas
-        ref={canvasRef}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
-        style={{
-          position: 'absolute',
-          top: 0, left: 0,
-          width: '100%', height: '100%',
-          borderRadius: 10,
-          cursor: 'crosshair',
-        }}
-      />
+      >
+        <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+          <img
+            ref={imgRef}
+            src={src}
+            alt="Region selection"
+            onLoad={draw}
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              height: 'auto',
+              borderRadius: 'var(--r-sm)',
+              border: '1px solid var(--line)',
+              userSelect: 'none',
+              pointerEvents: 'none',
+            }}
+          />
+          <canvas
+            ref={canvasRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '100%',
+              height: '100%',
+              borderRadius: 'var(--r-sm)',
+              touchAction: 'none',
+            }}
+          />
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,51 +1,113 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Catamaran:wght@400;600;700;800&family=Noto+Serif+Tamil:wght@400;600;700&family=Noto+Sans+Tamil:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* ─────────────────────────────────────────────────────────────────────────
+   Tamil Inscription Suite — Apple-inspired Design System
+   Typography: Inter Tight (display) + Noto Sans Tamil (script)
+   Palette: near-black base · grayscale surfaces · single copper accent
+   ───────────────────────────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Noto+Sans+Tamil:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
+/* ── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
-  /* Heritage Meets SaaS Color System */
-  --bg-primary:       #0b0c14;
-  --bg-card:          #121422;
-  --bg-card-2:        #181a2e;
-  --bg-card-3:        #20233b;
-  --terracotta:       #ea580c;
-  --terracotta-hover: #c2410c;
-  --gold:             #eab308;
-  --gold-light:       #fde047;
-  --emerald:          #10b981;
-  --indigo:           #8b5cf6;
-  
-  --accent:           #ea580c;
-  --accent-hover:     #c2410c;
-  --accent-muted:     rgba(234, 88, 12, 0.14);
-  --accent-glow:      0 0 25px rgba(234, 88, 12, 0.3);
-  
-  --border:           rgba(255, 255, 255, 0.09);
-  --border-light:     rgba(255, 255, 255, 0.14);
-  --text-primary:     #f8fafc;
-  --text-secondary:   #94a3b8;
-  --text-muted:       #64748b;
-  
-  --header-h:         64px;
-  --toolbar-h:        54px;
+  /* Base */
+  --base:           #0a0a0a;
+  --surface-1:      #111111;
+  --surface-2:      #161616;
+  --surface-3:      #1c1c1c;
+  --surface-4:      #222222;
+
+  /* Borders: hairline only */
+  --line:           rgba(255,255,255,0.08);
+  --line-strong:    rgba(255,255,255,0.14);
+
+  /* Text */
+  --fg:             #f5f5f7;
+  --fg-2:           #a1a1a6;
+  --fg-3:           #636366;
+  --fg-4:           #3a3a3c;
+
+  /* ── Legacy aliases for unchanged components ─── */
+  --border:         rgba(255,255,255,0.08);   /* = --line */
+  --border-light:   rgba(255,255,255,0.14);   /* = --line-strong */
+  --bg-primary:     #0a0a0a;                  /* = --base */
+  --bg-card:        #111111;                  /* = --surface-1 */
+  --bg-card-2:      #161616;                  /* = --surface-2 */
+  --bg-card-3:      #1c1c1c;                  /* = --surface-3 */
+  --text-primary:   #f5f5f7;                  /* = --fg */
+  --text-secondary: #a1a1a6;                  /* = --fg-2 */
+  --text-muted:     #636366;                  /* = --fg-3 */
+  --accent:         #c8865a;                  /* = --copper */
+  --accent-muted:   rgba(200,134,90,0.12);    /* = --copper-dim */
+  --accent-border:  rgba(200,134,90,0.25);    /* = --copper-border */
+
+  /* Single accent: warm copper (stone inscription evocation) */
+  --copper:         #c8865a;
+  --copper-light:   #e0a57a;
+  --copper-dim:     rgba(200,134,90,0.12);
+  --copper-border:  rgba(200,134,90,0.25);
+
+  --btn-primary-fg: #0a0a0a;
+  --nav-bg:         rgba(10, 10, 10, 0.85);
+  --shadow-card:    none;
+
+  /* Spacing scale (8-base) */
+  --sp-1: 8px;
+  --sp-2: 16px;
+  --sp-3: 24px;
+  --sp-4: 40px;
+  --sp-5: 64px;
+  --sp-6: 96px;
+  --sp-7: 128px;
+
+  /* Radius: ONE consistent scale */
+  --r-sm:  8px;
+  --r-md:  12px;
+  --r-lg:  20px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-out: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --dur-fast: 180ms;
+  --dur-mid:  360ms;
+  --dur-slow: 520ms;
 }
 
-/* Light Theme Variables */
-[data-theme='light'] {
-  --bg-primary:       #f8fafc;
-  --bg-card:          #ffffff;
-  --bg-card-2:        #f1f5f9;
-  --bg-card-3:        #e2e8f0;
-  
-  --border:           rgba(15, 23, 42, 0.08);
-  --border-light:     rgba(15, 23, 42, 0.14);
-  --text-primary:     #0f172a;
-  --text-secondary:   #475569;
-  --text-muted:       #94a3b8;
+/* ── Light Theme Overrides ────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --base:           #f5f5f7;  /* Apple clean light gray base */
+  --surface-1:      #ffffff;  /* Pure white card background */
+  --surface-2:      #eef0f3;  /* Elevated surface */
+  --surface-3:      #e2e5ea;  /* Input & panel surface */
+  --surface-4:      #d1d5db;  /* Border/fill surface */
+
+  --line:           rgba(0, 0, 0, 0.08);
+  --line-strong:    rgba(0, 0, 0, 0.16);
+
+  --fg:             #111827;  /* Apple near-black text */
+  --fg-2:           #374151;  /* Secondary text */
+  --fg-3:           #4b5563;  /* Highly readable muted text */
+  --fg-4:           #6b7280;  /* Subtle label text */
+
+  --border:         rgba(0, 0, 0, 0.08);
+  --border-light:   rgba(0, 0, 0, 0.16);
+  --bg-primary:     #f5f5f7;
+  --bg-card:        #ffffff;
+  --bg-card-2:      #eef0f3;
+  --bg-card-3:      #e2e5ea;
+  --text-primary:   #111827;
+  --text-secondary: #374151;
+  --text-muted:     #4b5563;
+
+  --copper:         #c05621;  /* Vibrant warm terracotta copper */
+  --copper-light:   #9c4215;  /* Readable copper text on white */
+  --copper-dim:     rgba(192, 86, 33, 0.1);
+  --copper-border:  rgba(192, 86, 33, 0.3);
+
+  --btn-primary-fg: #ffffff;  /* Crisp white text on primary button */
+  --nav-bg:         rgba(255, 255, 255, 0.88);  /* Translucent frosted white navbar */
+  --shadow-card:    0 2px 10px rgba(0, 0, 0, 0.04);
 }
 
+/* ── Reset ─────────────────────────────────────────────────────────────── */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -53,98 +115,300 @@
 }
 
 html {
-  scroll-behavior: smooth;
-}
-
-html, body, #root {
-  width: 100%;
-  min-height: 100%;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+  background: var(--base);
+  color: var(--fg);
 }
 
-/* ── Scrollbars ─────────────────────────────── */
-::-webkit-scrollbar       { width: 6px; height: 6px; }
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 17px;
+  line-height: 1.55;
+  font-optical-sizing: auto;
+  background: var(--base);
+  color: var(--fg);
+  min-height: 100dvh;
+}
+
+#root {
+  width: 100%;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Tamil Script ──────────────────────────────────────────────────────── */
+.tamil {
+  font-family: 'Noto Sans Tamil', serif;
+  font-optical-sizing: auto;
+}
+
+/* ── Scrollbar: invisible unless hovered ───────────────────────────────── */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 6px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(234, 88, 12, 0.4); }
+::-webkit-scrollbar-thumb { background: var(--surface-4); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-4); }
 
-/* ── Typography & Tamil Script Rendering ────── */
-.tamil-text {
-  font-family: 'Catamaran', 'Noto Serif Tamil', 'Noto Sans Tamil', serif;
-}
-
-.font-heading {
-  font-family: 'Outfit', sans-serif;
-}
-
-/* ── Glassmorphism & Cards ──────────────────── */
-.glass-panel {
-  background: rgba(18, 20, 34, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
-}
-
-.glass-card {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.glass-card:hover {
-  border-color: rgba(234, 88, 12, 0.4);
-  background: rgba(255, 255, 255, 0.045);
-  transform: translateY(-2px);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
-}
-
-/* ── Animations ─────────────────────────────── */
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
+/* ── Motion utility: reveal on scroll ─────────────────────────────────── */
+@keyframes revealUp {
+  from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes floatAnim {
-  0%, 100% { transform: translateY(0px); }
-  50%      { transform: translateY(-8px); }
+@keyframes scanline {
+  0%   { transform: translateX(-4px) scaleX(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(100%) scaleX(1); opacity: 0; }
 }
 
-@keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 20px rgba(234, 88, 12, 0.2); }
-  50%      { box-shadow: 0 0 35px rgba(234, 88, 12, 0.45); }
+@keyframes drawIn {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
 }
 
-.fade-up {
-  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+@keyframes shimmerLine {
+  0%   { transform: scaleX(0); }
+  60%  { transform: scaleX(1); }
+  100% { transform: scaleX(1); opacity: 0; }
 }
 
-.float-slow {
-  animation: floatAnim 4s ease-in-out infinite;
+.reveal {
+  opacity: 0;
+  animation: revealUp var(--dur-slow) var(--ease-out) both;
 }
 
-.pulse-glow {
-  animation: pulseGlow 3s ease-in-out infinite;
+.reveal-d1 { animation-delay: 80ms; }
+.reveal-d2 { animation-delay: 160ms; }
+.reveal-d3 { animation-delay: 240ms; }
+.reveal-d4 { animation-delay: 320ms; }
+
+/* ── Legacy utility classes (used in InscriptionCanvas, old components) ─ */
+@keyframes spin-ccw {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spinner { animation: spin-ccw 0.8s linear infinite; }
+
+@keyframes pulse-ring {
+  0%, 100% { transform: scale(0.8); opacity: 0.5; }
+  50%       { transform: scale(1.2); opacity: 1; }
 }
 
-/* Gradient Text Utilities */
-.gradient-text-terracotta {
-  background: linear-gradient(135deg, #f97316 0%, #fb923c 50%, #fde047 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+/* Legacy: skP skeleton pulse for DatasetStudio */
+@keyframes skP {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
 }
 
-.gradient-text-gold {
-  background: linear-gradient(135deg, #fef08a 0%, #eab308 50%, #ca8a04 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+
+/* ── Typography helpers ────────────────────────────────────────────────── */
+.display-xl {
+  font-size: clamp(3rem, 7vw, 6rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.04;
+  color: var(--fg);
 }
 
-.gradient-text-purple {
-  background: linear-gradient(135deg, #c084fc 0%, #a855f7 50%, #e9d5ff 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+.display-lg {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+  color: var(--fg);
+}
+
+.display-md {
+  font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.14;
+  color: var(--fg);
+}
+
+.body-lg {
+  font-size: 19px;
+  line-height: 1.6;
+  color: var(--fg-2);
+}
+
+.body-sm {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+/* ── Button system ─────────────────────────────────────────────────────── */
+
+/* Primary: filled copper — use ONCE per view */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: var(--copper);
+  color: var(--btn-primary-fg);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), opacity var(--dur-fast);
+  text-decoration: none;
+}
+.btn-primary:hover  { background: var(--copper-light); }
+.btn-primary:active { opacity: 0.85; }
+.btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Secondary: hairline bordered */
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 24px;
+  background: transparent;
+  color: var(--fg-2);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast);
+  text-decoration: none;
+}
+.btn-secondary:hover { border-color: var(--fg-3); color: var(--fg); }
+
+/* Ghost: text only */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--fg-3);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+.btn-ghost:hover { color: var(--fg); }
+
+/* Icon button */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--fg-3);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast);
+  flex-shrink: 0;
+}
+.btn-icon:hover { border-color: var(--line-strong); color: var(--fg-2); }
+
+/* ── Surface cards ─────────────────────────────────────────────────────── */
+.surface {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.surface-2 {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+/* ── Input ─────────────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 15px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color var(--dur-fast);
+}
+.input:focus { border-color: var(--copper-border); }
+
+/* ── Divider ───────────────────────────────────────────────────────────── */
+.divider {
+  width: 100%;
+  height: 1px;
+  background: var(--line);
+}
+
+/* ── Confidence bar ────────────────────────────────────────────────────── */
+.conf-bar-track {
+  width: 48px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--surface-4);
+  overflow: hidden;
+}
+
+.conf-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.3s var(--ease);
+}
+
+/* ── Loading: thin animated line ───────────────────────────────────────── */
+@keyframes loadLine {
+  0%   { left: -40%; width: 30%; }
+  50%  { width: 50%; }
+  100% { left: 110%; width: 30%; }
+}
+
+.loading-line-track {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--surface-3);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.loading-line-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--copper);
+  animation: loadLine 1.4s var(--ease) infinite;
+}
+
+/* ── Nav scroll effect trigger ─────────────────────────────────────────── */
+.nav-scrolled {
+  background: var(--nav-bg) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border-bottom: 1px solid var(--line) !important;
 }

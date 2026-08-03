@@ -1,11 +1,11 @@
+import { useEffect, useRef } from 'react'
+
 /**
  * CorrectionPopover
- *
- * Appears when the user clicks a bounding box in the Detection View.
- * Shows top-3 model predictions and a manual text input.
- * Calls onCorrect(wordId, newChar) when user confirms.
+ * macOS-style floating context panel — hairline border, tight padding,
+ * auto-positioning above/below click to prevent screen bottom/taskbar clipping.
  */
-export default function CorrectionPopover({ word, position, onCorrect, onClose, onSplitBox, onForgetMemory, onRemoveBox }) {
+export default function CorrectionPopover({ word, position, onCorrect, onClose, onForgetMemory, onRemoveBox, onSplitBox }) {
   if (!word) return null
 
   const top3 = word.top3 || []
@@ -14,196 +14,161 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
     if (e.key === 'Escape') onClose()
   }
 
+  const POPOVER_WIDTH  = 272
+  const POPOVER_HEIGHT = 440
+
+  // Horizontal clamping: keep inside viewport with 16px margin
+  const panelX = Math.max(16, Math.min(position.x, window.innerWidth - POPOVER_WIDTH - 16))
+
+  // Vertical clamping: if click is near bottom, position ABOVE click or clamp to top margin
+  let panelY = position.y
+  if (position.y + POPOVER_HEIGHT > window.innerHeight - 20) {
+    panelY = Math.max(16, position.y - POPOVER_HEIGHT - 10)
+    if (panelY + POPOVER_HEIGHT > window.innerHeight - 16) {
+      panelY = Math.max(16, window.innerHeight - POPOVER_HEIGHT - 16)
+    }
+  }
+
   return (
     <>
       {/* Click-outside backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 999,
-        }}
-      />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
 
       {/* Popover panel */}
       <div
         onKeyDown={handleKey}
         style={{
           position: 'fixed',
-          left:  Math.min(position.x, window.innerWidth  - 280),
-          top:   Math.min(position.y, window.innerHeight - 260),
+          left: panelX,
+          top: panelY,
           zIndex: 1000,
-          width: 270,
-          background: 'var(--bg-card)',
-          border: '1px solid var(--border)',
-          borderRadius: 12,
-          boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+          width: POPOVER_WIDTH,
+          maxHeight: 'calc(100vh - 32px)',
+          display: 'flex',
+          flexDirection: 'column',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--line-strong)',
+          borderRadius: 'var(--r-md)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.65), 0 2px 8px rgba(0,0,0,0.4)',
           overflow: 'hidden',
-          animation: 'fadeIn 0.12s ease-out',
+          animation: 'popIn 0.14s ease-out both',
         }}
       >
+        <style>{`
+          @keyframes popIn {
+            from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+            to   { opacity: 1; transform: scale(1)    translateY(0); }
+          }
+        `}</style>
+
         {/* Header */}
         <div style={{
+          flexShrink: 0,
           padding: '10px 14px 8px',
-          background: 'var(--bg-card-2)',
-          borderBottom: '1px solid var(--border)',
+          borderBottom: '1px solid var(--line)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          background: 'var(--surface-3)',
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)',
-            textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            ✏️ Correct Character #{word.id}
+          <span className="label" style={{ color: 'var(--copper)', fontWeight: 700 }}>
+            Character #{word.id}
           </span>
-          <button onClick={onClose} style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: 'var(--text-muted)', fontSize: 16, lineHeight: 1, padding: 2,
-          }}>×</button>
+          <button
+            className="btn-ghost"
+            onClick={onClose}
+            style={{ padding: '2px 6px', fontSize: 16, lineHeight: 1, color: 'var(--fg-3)' }}
+          >
+            ×
+          </button>
         </div>
 
-        {/* Scrollable body */}
-        <div style={{
-          maxHeight: 'calc(100vh - 120px)',
-          overflowY: 'auto', padding: '12px 14px',
-        }}>
-          {/* Action Tools: Split / Remove */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-            {onSplitBox && (
-              <button
-                onClick={() => onSplitBox(word.id)}
-                style={{
-                  flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid var(--accent)',
-                  background: 'rgba(249,115,22,0.1)', color: 'var(--accent)',
-                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  transition: 'background 0.15s'
-                }}
-                onMouseOver={e => e.currentTarget.style.background = 'rgba(249,115,22,0.2)'}
-                onMouseOut={e => e.currentTarget.style.background = 'rgba(249,115,22,0.1)'}
-              >
-                ✂️ Split Box
-              </button>
-            )}
-            {onRemoveBox && (
-              <button
-                onClick={() => { onRemoveBox(word.id); onClose(); }}
-                style={{
-                  flex: 1, padding: '7px 10px', borderRadius: 6, border: '1px solid rgba(239,68,68,0.4)',
-                  background: 'rgba(239,68,68,0.1)', color: '#ef4444',
-                  fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  transition: 'background 0.15s'
-                }}
-                onMouseOver={e => e.currentTarget.style.background = 'rgba(239,68,68,0.25)'}
-                onMouseOut={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}
-              >
-                🗑 Remove Box
-              </button>
-            )}
-          </div>
+        {/* Scrollable Body */}
+        <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 14 }}>
 
           {/* Current prediction */}
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: 'var(--text-muted)',
-                textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Current Prediction
-              </span>
-              {word.is_memorized && onForgetMemory && (
-                <button
-                  onClick={() => { onForgetMemory(word.id); onClose(); }}
-                  style={{
-                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
-                    color: '#ef4444', borderRadius: 4, padding: '2px 6px',
-                    fontSize: 9, fontWeight: 700, cursor: 'pointer',
-                  }}
-                  title="Reset saved vector memory for this character"
-                >
-                  Reset Memory
-                </button>
-              )}
-            </div>
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '6px 10px', borderRadius: 8,
-              background: 'rgba(249,115,22,0.08)',
-              border: '1px solid rgba(249,115,22,0.25)',
-            }}>
-              <span className="tamil-text" style={{ fontSize: 24, fontWeight: 700, color: 'var(--accent)' }}>
-                {word.modern_tamil}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '8px 12px',
+            background: 'var(--surface-3)',
+            borderRadius: 'var(--r-sm)',
+            marginBottom: 12,
+            border: '1px solid var(--line)',
+          }}>
+            <span className="tamil" style={{ fontSize: 28, fontWeight: 600, color: 'var(--copper-light)' }}>
+              {word.modern_tamil}
+            </span>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--fg-2)', fontWeight: 500 }}>
                 {Math.round(word.confidence * 100)}% confidence
-              </span>
+              </div>
               {word.is_memorized && (
-                <span style={{ marginLeft: 'auto', fontSize: 13, color: '#22c55e', fontWeight: 700 }}>
-                  ✓
-                </span>
+                <div style={{ fontSize: 11, color: '#3da35d', marginTop: 1, fontWeight: 600 }}>Memorised</div>
               )}
             </div>
+            {word.is_memorized && onForgetMemory && (
+              <button
+                className="btn-ghost"
+                onClick={() => { onForgetMemory(word.id); onClose() }}
+                style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--fg-3)' }}
+              >
+                Reset
+              </button>
+            )}
           </div>
 
-          {/* Ambiguous NLP Options */}
+          {/* Contextual options */}
           {word.ambiguous_options && word.ambiguous_options.length > 1 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6,
-                textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Contextual Alternatives (Same Shape)
-              </div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="label" style={{ marginBottom: 6, color: 'var(--fg-4)' }}>Contextual options</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {word.ambiguous_options.map((alt, i) => {
-                  const isCurrent = alt === word.modern_tamil;
+                  const active = alt === word.modern_tamil
                   return (
                     <button
                       key={i}
-                      onClick={() => { if (!isCurrent) { onCorrect(word.id, alt); onClose(); } }}
+                      onClick={() => { if (!active) { onCorrect(word.id, alt); onClose() } }}
                       style={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        padding: '6px 12px', borderRadius: 8, cursor: isCurrent ? 'default' : 'pointer',
-                        background: isCurrent ? 'rgba(249,115,22,0.1)' : 'var(--bg-card-3)',
-                        border: `1px solid ${isCurrent ? 'rgba(249,115,22,0.3)' : 'var(--border)'}`,
-                        transition: 'background 0.1s',
-                        minWidth: 50,
+                        padding: '6px 10px',
+                        borderRadius: 'var(--r-sm)',
+                        cursor: active ? 'default' : 'pointer',
+                        background: active ? 'var(--copper-dim)' : 'var(--surface-3)',
+                        border: `1px solid ${active ? 'var(--copper-border)' : 'var(--line)'}`,
+                        transition: 'background var(--dur-fast)',
                       }}
-                      title={isCurrent ? "Currently selected by NLP Engine" : `Override NLP and select ${alt}`}
                     >
-                      <span className="tamil-text" style={{ fontSize: 22, fontWeight: 700,
-                        color: isCurrent ? 'var(--accent)' : 'var(--text-primary)' }}>
+                      <span className="tamil" style={{ fontSize: 20, fontWeight: 600, color: active ? 'var(--copper-light)' : 'var(--fg)' }}>
                         {alt}
                       </span>
                     </button>
-                  );
+                  )
                 })}
               </div>
             </div>
           )}
 
-          {/* Top-3 alternatives */}
+          {/* Top-3 model alternatives */}
           {top3.length > 1 && (
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6,
-                textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Model Alternatives — click to select
-              </div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="label" style={{ marginBottom: 6, color: 'var(--fg-4)' }}>Model alternatives</div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {top3.map((alt, i) => (
                   <button
                     key={i}
                     onClick={() => { onCorrect(word.id, alt.modern_tamil); onClose() }}
                     style={{
-                      display: 'flex', flexDirection: 'column', alignItems: 'center',
-                      padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
-                      background: i === 0 ? 'rgba(249,115,22,0.1)' : 'var(--bg-card-3)',
-                      border: `1px solid ${i === 0 ? 'rgba(249,115,22,0.3)' : 'var(--border)'}`,
-                      transition: 'background 0.1s',
-                      minWidth: 60,
+                      padding: '6px 10px',
+                      borderRadius: 'var(--r-sm)',
+                      cursor: 'pointer',
+                      background: 'var(--surface-3)',
+                      border: '1px solid var(--line)',
                     }}
-                    title={`Select ${alt.modern_tamil} (${Math.round(alt.confidence * 100)}%)`}
+                    title={`${Math.round(alt.confidence * 100)}% confidence`}
                   >
-                    <span className="tamil-text" style={{ fontSize: 22, fontWeight: 700,
-                      color: i === 0 ? 'var(--accent)' : 'var(--text-primary)' }}>
+                    <span className="tamil" style={{ fontSize: 20, fontWeight: 600, color: 'var(--fg)' }}>
                       {alt.modern_tamil}
                     </span>
-                    <span style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 2 }}>
+                    <div style={{ fontSize: 10, color: 'var(--fg-3)', textAlign: 'center', marginTop: 2 }}>
                       {Math.round(alt.confidence * 100)}%
-                    </span>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -211,52 +176,63 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
           )}
 
           {/* Manual input */}
-          <div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6,
-              textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Type custom character
-            </div>
-            <div style={{ display: 'flex', gap: 6 }}>
+          <div style={{ marginBottom: 12 }}>
+            <div className="label" style={{ marginBottom: 6, color: 'var(--fg-4)' }}>Custom character</div>
+            <div style={{ display: 'flex', gap: 8 }}>
               <input
                 autoFocus
-                className="tamil-text"
+                className="input tamil"
                 maxLength={4}
                 placeholder="அ"
                 defaultValue={word.modern_tamil}
+                id={`cp-input-${word.id}`}
+                style={{ fontSize: 18 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const v = e.target.value.trim()
                     if (v) { onCorrect(word.id, v); onClose() }
                   }
                 }}
-                style={{
-                  flex: 1, background: 'var(--bg-card-3)',
-                  border: '1px solid var(--border)', borderRadius: 6,
-                  color: 'var(--text-primary)', fontSize: 18,
-                  padding: '5px 10px', outline: 'none',
-                  fontFamily: 'inherit',
-                }}
-                id={`correction-input-${word.id}`}
               />
               <button
+                className="btn-primary"
+                style={{ padding: '0 14px', fontSize: 13, flexShrink: 0 }}
                 onClick={() => {
-                  const el = document.getElementById(`correction-input-${word.id}`)
+                  const el = document.getElementById(`cp-input-${word.id}`)
                   const v = el?.value.trim()
                   if (v) { onCorrect(word.id, v); onClose() }
                 }}
-                style={{
-                  padding: '5px 12px', borderRadius: 6, border: 'none',
-                  background: 'var(--accent)', color: '#fff',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                }}
               >
-                ✓ Set
+                Set
               </button>
             </div>
-            <div style={{ fontSize: 9, color: 'var(--text-muted)', marginTop: 4 }}>
-              Press Enter or click ✓ Set. Press Esc to cancel.
+            <div style={{ fontSize: 11, color: 'var(--fg-4)', marginTop: 4 }}>
+              Enter to confirm · Esc to dismiss
             </div>
           </div>
+
+          {/* Destructive / Structural actions */}
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {onSplitBox && (
+              <button
+                className="btn-secondary"
+                onClick={() => { onSplitBox(word.id); onClose() }}
+                style={{ fontSize: 12, width: '100%', justifyContent: 'center', color: 'var(--copper)' }}
+              >
+                Split Bounding Box
+              </button>
+            )}
+            {onRemoveBox && (
+              <button
+                className="btn-ghost"
+                onClick={() => { onRemoveBox(word.id); onClose() }}
+                style={{ fontSize: 12, color: '#8e3b3b', width: '100%', justifyContent: 'center' }}
+              >
+                Delete Bounding Box
+              </button>
+            )}
+          </div>
+
         </div>
       </div>
     </>

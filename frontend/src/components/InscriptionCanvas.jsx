@@ -17,6 +17,8 @@ export default function InscriptionCanvas({
   isAddingBox = false,
   threshold = 0,
   corrections = {},
+  maxHeight = null,
+  zoomLevel = 1.0,
 }) {
   const wrapRef   = useRef(null)
   const imgRef    = useRef(null)
@@ -46,6 +48,7 @@ export default function InscriptionCanvas({
     ctx.clearRect(0, 0, width, height)
 
     if (!localWords.length || !imageWidth || !imageHeight) return
+    if (img.naturalWidth > 0 && Math.abs(img.naturalWidth - imageWidth) > 50) return
 
     const scaleX = width  / imageWidth
     const scaleY = height / imageHeight
@@ -98,10 +101,9 @@ export default function InscriptionCanvas({
         ctx.strokeRect(x + w/2 - hw/2, y + h - hw/2, hw, hw)
       }
 
-      // Badge
-      const displayChar = corrections[word.id] ?? word.modern_tamil ?? '?'
-      const badgeText   = `${word.id}: ${displayChar}`
-      ctx.font = 'bold 11px Inter, "Noto Sans Tamil", sans-serif'
+      // Label badge
+      const badgeText = `${word.modern_tamil || '?'}`
+      ctx.font = '600 11px Inter, "Noto Sans Tamil", sans-serif'
       const tw = ctx.measureText(badgeText).width
       const bw = tw + 8
       const bh = 16
@@ -151,6 +153,7 @@ export default function InscriptionCanvas({
   useEffect(() => {
     const obs = new ResizeObserver(() => draw())
     if (wrapRef.current) obs.observe(wrapRef.current)
+    if (imgRef.current) obs.observe(imgRef.current)
     return () => obs.disconnect()
   }, [draw])
 
@@ -228,71 +231,74 @@ export default function InscriptionCanvas({
     const mx = e.clientX - rect.left
     const my = e.clientY - rect.top
     
+    // Handle manual box drawing
     if (drawNewState) {
       setDrawNewState(prev => ({ ...prev, currX: mx, currY: my }))
       return
     }
 
+    // Handle box edge resizing
     if (dragState) {
-      hasDraggedRef.current = true // user actually dragged
-      const sx = imageWidth / canvas.width
-      const sy = imageHeight / canvas.height
-      const dx = (mx - dragState.startX) * sx
-      const dy = (my - dragState.startY) * sy
-      
+      hasDraggedRef.current = true
+      const { wordId, edge, startX, startY, initialWord } = dragState
+      const scaleX = canvas.width  / imageWidth
+      const scaleY = canvas.height / imageHeight
+
+      const dxImg = (mx - startX) / scaleX
+      const dyImg = (my - startY) / scaleY
+
       setLocalWords(prev => prev.map(w => {
-        if (w.id !== dragState.wordId) return w
-        let { x, y, w: width, h: height } = dragState.initialWord
-        
-        if (dragState.edge === 'left') {
-          const rightEdge = dragState.initialWord.x + dragState.initialWord.w
-          x = Math.min(x + dx, rightEdge - 5) // min width 5
-          width = rightEdge - x
-        } else if (dragState.edge === 'right') {
-          width = Math.max(5, dragState.initialWord.w + dx)
-        } else if (dragState.edge === 'top') {
-          const bottomEdge = dragState.initialWord.y + dragState.initialWord.h
-          y = Math.min(y + dy, bottomEdge - 5)
-          height = bottomEdge - y
-        } else if (dragState.edge === 'bottom') {
-          height = Math.max(5, dragState.initialWord.h + dy)
+        if (w.id !== wordId) return w
+        let { x, y, w: width, h: height } = initialWord
+
+        if (edge === 'left') {
+          const newX = Math.min(x + dxImg, x + width - 10)
+          const newW = width + (x - newX)
+          x = newX
+          width = newW
+        } else if (edge === 'right') {
+          width = Math.max(10, width + dxImg)
+        } else if (edge === 'top') {
+          const newY = Math.min(y + dyImg, y + height - 10)
+          const newH = height + (y - newY)
+          y = newY
+          height = newH
+        } else if (edge === 'bottom') {
+          height = Math.max(10, height + dyImg)
         }
+
         return { ...w, x, y, w: width, h: height }
       }))
-    } else {
-      if (isAddingBox) {
-        canvas.style.cursor = 'crosshair'
-        return
-      }
-      const edge = _hitEdge(mx, my, canvas.width, canvas.height)
+      return
+    }
+
+    // Normal hover & cursor update
+    const edge = _hitEdge(mx, my, canvas.width, canvas.height)
+    if (edge) {
       if (edge === 'left' || edge === 'right') canvas.style.cursor = 'ew-resize'
       else if (edge === 'top' || edge === 'bottom') canvas.style.cursor = 'ns-resize'
-      else {
-        const hit = _hitTest(mx, my, canvas.width, canvas.height)
-        onWordHover(hit)
-        canvas.style.cursor = hit ? 'pointer' : 'crosshair'
-      }
+    } else {
+      const hit = _hitTest(mx, my, canvas.width, canvas.height)
+      canvas.style.cursor = isAddingBox ? 'crosshair' : (hit !== null ? 'pointer' : 'default')
+      onWordHover(hit)
     }
   }
 
   function handlePointerUp() {
     if (drawNewState) {
       const canvas = canvasRef.current
-      if (canvas) {
-        const nx = Math.min(drawNewState.startX, drawNewState.currX)
-        const ny = Math.min(drawNewState.startY, drawNewState.currY)
-        const nw = Math.abs(drawNewState.currX - drawNewState.startX)
-        const nh = Math.abs(drawNewState.currY - drawNewState.startY)
+      if (canvas && imageWidth && imageHeight) {
+        const { startX, startY, currX, currY } = drawNewState
+        const scaleX = canvas.width  / imageWidth
+        const scaleY = canvas.height / imageHeight
 
-        if (nw > 10 && nh > 10 && onAddBoxComplete) {
-          const sx = imageWidth / canvas.width
-          const sy = imageHeight / canvas.height
-          onAddBoxComplete({
-            x: nx * sx,
-            y: ny * sy,
-            w: nw * sx,
-            h: nh * sy
-          })
+        const x1 = Math.min(startX, currX) / scaleX
+        const y1 = Math.min(startY, currY) / scaleY
+        const w1 = Math.abs(currX - startX) / scaleX
+        const h1 = Math.abs(currY - startY) / scaleY
+
+        if (w1 > 5 && h1 > 5 && onAddBoxComplete) {
+          onAddBoxComplete({ x: x1, y: y1, w: w1, h: h1 })
         }
       }
       setDrawNewState(null)
@@ -301,7 +307,6 @@ export default function InscriptionCanvas({
 
     if (dragState) {
       if (hasDraggedRef.current && onBoxesEdited) {
-        // Send the updated boxes to backend
         onBoxesEdited(localWords)
       }
       setDragState(null)
@@ -309,12 +314,12 @@ export default function InscriptionCanvas({
   }
 
   function handleClick(e) {
-    if (hasDraggedRef.current) {
+    if (isAddingBox || hasDraggedRef.current) {
       hasDraggedRef.current = false
-      return // Ignore click if we just finished dragging
+      return
     }
     const canvas = canvasRef.current
-    if (!canvas || !localWords.length || !imageWidth || !onWordClick) return
+    if (!canvas || !imageWidth) return
     const rect = canvas.getBoundingClientRect()
     const hit  = _hitTest(e.clientX - rect.left, e.clientY - rect.top, canvas.width, canvas.height)
     if (hit !== null) {
@@ -323,42 +328,67 @@ export default function InscriptionCanvas({
   }
 
   return (
-    <div ref={wrapRef} style={{
-      position: 'relative',
-      width: '100%',
-    }}>
-      <img
-        ref={imgRef}
-        src={imageURL}
-        alt="Tamil inscription"
-        onLoad={draw}
+    <div
+      ref={wrapRef}
+      style={{
+        position: 'relative',
+        width: '100%',
+        maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+        height: maxHeight ? `${maxHeight}px` : 'auto',
+        overflow: 'auto',
+        background: '#070707',
+        borderRadius: 10,
+        border: '1px solid var(--line)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <div
         style={{
-          display: 'block',
-          width: '100%',
-          height: 'auto',
-          borderRadius: 10,
-          border: '1px solid var(--border)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
+          position: 'relative',
+          display: 'inline-block',
+          maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+          maxWidth: '100%',
+          transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
+          transformOrigin: 'top left',
+          transition: 'transform 0.15s ease-out',
         }}
-      />
-      <canvas
-        ref={canvasRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={() => {
-          handlePointerUp()
-          onWordHover(null)
-        }}
-        onClick={handleClick}
-        style={{
-          position: 'absolute',
-          top: 0, left: 0,
-          width: '100%',
-          height: '100%',
-          borderRadius: 10,
-        }}
-      />
+      >
+        <img
+          ref={imgRef}
+          src={imageURL}
+          alt="Tamil inscription"
+          onLoad={draw}
+          style={{
+            display: 'block',
+            maxWidth: '100%',
+            maxHeight: maxHeight ? `${maxHeight}px` : 'none',
+            width: 'auto',
+            height: 'auto',
+            objectFit: 'contain',
+            borderRadius: 8,
+          }}
+        />
+        <canvas
+          ref={canvasRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={() => {
+            handlePointerUp()
+            onWordHover(null)
+          }}
+          onClick={handleClick}
+          style={{
+            position: 'absolute',
+            top: 0, left: 0,
+            width: '100%',
+            height: '100%',
+            borderRadius: 8,
+          }}
+        />
+      </div>
     </div>
   )
 }

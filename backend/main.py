@@ -318,12 +318,27 @@ async def translate(
             regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
 
         # Load persistent user-saved custom segmentation layout for this image if available
-        # (Skip loading full-image saved boxes if user is performing a specific region crop!)
         fname = getattr(file, "filename", None)
         saved_boxes = get_user_boxes_for_image(img_hash, fname)
-        print(f"[TRANSLATE] file='{fname}', hash='{img_hash[:8]}...', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}")
+        
+        # Determine if saved_boxes were created from a region crop (cover only a partial top/region of full image)
+        is_saved_from_crop = False
+        if saved_boxes and img_h > 0:
+            max_y = max(int(b.get("y", 0)) + int(b.get("h", 0)) for b in saved_boxes)
+            if max_y < 0.5 * img_h and len(saved_boxes) < 25:
+                is_saved_from_crop = True
 
-        if saved_boxes and not is_region_active and not custom_boxes_json:
+        print(f"[TRANSLATE] file='{fname}', hash='{img_hash[:8]}...', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}, is_saved_crop={is_saved_from_crop}")
+
+        # Apply saved layout memory ONLY when appropriate (never override full-image YOLO with a partial crop layout)
+        should_apply_saved_layout = False
+        if saved_boxes and not custom_boxes_json:
+            if is_region_active:
+                should_apply_saved_layout = True
+            elif not is_saved_from_crop:
+                should_apply_saved_layout = True
+
+        if should_apply_saved_layout:
             print(f"[TRANSLATE] Successfully applied {len(saved_boxes)} saved memory boxes for {fname}")
             # Ensure saved boxes are strictly ordered left-to-right by (line, x)
             saved_boxes_sorted = sorted(saved_boxes, key=lambda b: (b.get("line", 1), b.get("x", 0)))
@@ -597,7 +612,9 @@ class RefineRequest(BaseModel):
 
 class RefineResponse(BaseModel):
     ai_refined_sentence: str
+    english_translation: Optional[str] = ""
     ai_meaning: Optional[str] = None
+    english_meaning: Optional[str] = None
     ai_word_breakdown: Optional[List[Dict]] = None
     alternative_sentences: List[str] = []
     roman_sentence: str = ""
@@ -615,14 +632,18 @@ async def refine_ai_endpoint(req: RefineRequest):
         raise HTTPException(status_code=500, detail="AI Refinement unavailable or failed.")
         
     refined_sentence = res["full_sentence"]
+    eng_trans = res.get("english_translation", "")
     meaning = res.get("meaning", "")
+    eng_meaning = res.get("english_meaning", "")
     breakdown = res.get("word_breakdown", [])
     alts = res.get("alternative_readings", [])[:10]
     roman = _to_roman(refined_sentence)
     
     return RefineResponse(
         ai_refined_sentence=refined_sentence,
+        english_translation=eng_trans,
         ai_meaning=meaning,
+        english_meaning=eng_meaning,
         ai_word_breakdown=breakdown,
         alternative_sentences=alts,
         roman_sentence=roman

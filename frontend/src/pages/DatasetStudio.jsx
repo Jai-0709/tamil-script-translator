@@ -79,7 +79,7 @@ function ClassDetailModal({ cls, onClose, onDelete }) {
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          background:'#0e1017', border:'1px solid var(--border)',
+          background:'var(--surface-1)', border:'1px solid var(--line)',
           borderRadius:14, width:'min(820px, 95vw)', maxHeight:'90vh',
           display:'flex', flexDirection:'column',
           boxShadow:'0 24px 60px rgba(0,0,0,0.8)',
@@ -460,56 +460,56 @@ export default function DatasetStudio({ onBack }) {
     : { display:'flex', flexDirection:'column', gap:8 }
 
   return (
-    <div style={{ height:'100vh', width:'100vw', overflow:'hidden', background:'#0e1017', fontFamily:"'Inter',system-ui,sans-serif", color:'var(--text-primary)', display:'flex', flexDirection:'column' }}>
+    <div style={{ height:'100vh', width:'100vw', overflow:'hidden', background:'var(--base)', fontFamily:"'Inter',system-ui,sans-serif", color:'var(--fg)', display:'flex', flexDirection:'column' }}>
 
       {/* HEADER */}
-      <div style={{ flexShrink:0, height:54, background:'#0e1017', borderBottom:'1px solid var(--border)', padding:'0 24px', display:'flex', alignItems:'center', gap:14 }}>
+      <div style={{ flexShrink:0, height:54, background:'var(--surface-1)', borderBottom:'1px solid var(--line)', padding:'0 24px', display:'flex', alignItems:'center', gap:14 }}>
 
-        <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(255,255,255,0.04)', border:'1px solid var(--border)', color:'var(--text-secondary)', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0 }}
-          onMouseEnter={e=>{e.currentTarget.style.color='var(--text-primary)'; e.currentTarget.style.background='rgba(255,255,255,0.08)'}}
-          onMouseLeave={e=>{e.currentTarget.style.color='var(--text-secondary)'; e.currentTarget.style.background='rgba(255,255,255,0.04)'}}>
-          ← Back to Translator
+        <button onClick={onBack} style={{ display:'flex', alignItems:'center', gap:6, background:'var(--surface-2)', border:'1px solid var(--line)', color:'var(--fg-2)', borderRadius:7, padding:'5px 12px', cursor:'pointer', fontSize:12, fontWeight:600, flexShrink:0 }}
+          onMouseEnter={e=>{e.currentTarget.style.color='var(--fg)'; e.currentTarget.style.background='var(--surface-3)'}}
+          onMouseLeave={e=>{e.currentTarget.style.color='var(--fg-2)'; e.currentTarget.style.background='var(--surface-2)'}}>
+          ← Back to Workspace
         </button>
 
-        <div style={{ width:1, height:20, background:'var(--border)' }} />
+        <div style={{ width:1, height:20, background:'var(--line)' }} />
 
         <div>
-          <div style={{ fontSize:14, fontWeight:700, color:'var(--text-primary)' }}>Dataset Studio</div>
-          <div style={{ fontSize:10, color:'var(--text-muted)' }}>{lastSync ? `Synced ${lastSync.toLocaleTimeString()}` : 'Tamil Training Data Manager'}</div>
+          <div style={{ fontSize:14, fontWeight:700, color:'var(--fg)' }}>Dataset Studio</div>
+          <div style={{ fontSize:10, color:'var(--fg-3)' }}>{lastSync ? `Synced ${lastSync.toLocaleTimeString()}` : 'Tamil Training Data Manager'}</div>
         </div>
 
         <div style={{ flex:1 }} />
 
         {/* Health indicator */}
         {!loading && !error && (
-          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 12px', background:'rgba(255,255,255,0.03)', border:'1px solid var(--border)', borderRadius:7 }}>
-            <div style={{ width:7, height:7, borderRadius:'50%', background: score>=75?'#22c55e':score>=50?'#f97316':'#ef4444' }} />
-            <span style={{ fontSize:11, color:'var(--text-secondary)' }}>Health <span style={{ fontWeight:700, color:score>=75?'#22c55e':score>=50?'#f97316':'#ef4444' }}>{score}%</span></span>
-            <span style={{ fontSize:10, color:'var(--text-muted)' }}>·</span>
-            <span style={{ fontSize:11, color:'var(--text-secondary)' }}><b style={{ color:'#f97316' }}>{totalCls}</b> classes · <b style={{ color:'#22c55e' }}>{totalImgs.toLocaleString()}</b> images</span>
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'4px 12px', background:'var(--surface-2)', border:'1px solid var(--line)', borderRadius:7 }}>
+            <div style={{ width:7, height:7, borderRadius:'50%', background: score>=75?'#3da35d':score>=50?'var(--copper)':'#c87474' }} />
+            <span style={{ fontSize:11, color:'var(--fg-2)' }}>Health <span style={{ fontWeight:700, color:score>=75?'#3da35d':score>=50?'var(--copper)':'#c87474' }}>{score}%</span></span>
+            <span style={{ fontSize:10, color:'var(--fg-4)' }}>·</span>
+            <span style={{ fontSize:11, color:'var(--fg-2)' }}><b style={{ color:'var(--copper)' }}>{totalCls}</b> classes · <b style={{ color:'#3da35d' }}>{totalImgs.toLocaleString()}</b> images</span>
           </div>
         )}
 
-        <button onClick={fetchStats} disabled={loading} style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(249,115,22,0.12)', border:'1px solid rgba(249,115,22,0.25)', color:'#f97316', borderRadius:7, padding:'5px 14px', cursor:loading?'not-allowed':'pointer', fontSize:12, fontWeight:600 }}>
+        <button onClick={fetchStats} disabled={loading} className="btn-primary" style={{ padding:'5px 14px', fontSize:12 }}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>
       </div>
 
       {/* STATS BAR */}
       {!loading && !error && (
-        <div style={{ flexShrink:0, padding:'8px 24px', borderBottom:'1px solid var(--border)', display:'flex', gap:10, background:'rgba(0,0,0,0.2)' }}>
+        <div style={{ flexShrink:0, padding:'8px 24px', borderBottom:'1px solid var(--line)', display:'flex', gap:10, background:'var(--surface-1)' }}>
           {[
-            { label:'Total Classes',   val:totalCls,                   sub:null,                    c:'#f97316' },
-            { label:'Total Images',    val:totalImgs.toLocaleString(), sub:`avg ${avgPerCls}/class`,c:'#22c55e' },
-            { label:'Excellent',        val:excellentCls,               sub:'≥ 50 images',           c:'#22c55e' },
-            { label:'Needs Attention', val:lowCls,                     sub:'< 10 images',           c:'#ef4444' },
-            { label:'Health Score',     val:`${score}%`,                sub:score>=75?'Ready to train':score>=50?'Improving':'More data needed', c:score>=75?'#22c55e':score>=50?'#f97316':'#ef4444' },
-            { label:'Showing',          val:filtered.length,            sub:`of ${totalCls} classes`,c:'#3b82f6' },
+            { label:'Total Classes',   val:totalCls,                   sub:null,                    c:'var(--copper)' },
+            { label:'Total Images',    val:totalImgs.toLocaleString(), sub:`avg ${avgPerCls}/class`,c:'#3da35d' },
+            { label:'Excellent',        val:excellentCls,               sub:'≥ 50 images',           c:'#3da35d' },
+            { label:'Needs Attention', val:lowCls,                     sub:'< 10 images',           c:'#c87474' },
+            { label:'Health Score',     val:`${score}%`,                sub:score>=75?'Ready to train':score>=50?'Improving':'More data needed', c:score>=75?'#3da35d':score>=50?'var(--copper)':'#c87474' },
+            { label:'Showing',          val:filtered.length,            sub:`of ${totalCls} classes`,c:'var(--fg-2)' },
           ].map(s => (
-            <div key={s.label} style={{ flex:'1 1 0', background:'rgba(255,255,255,0.02)', border:'1px solid var(--border)', borderRadius:8, padding:'8px 14px', display:'flex', alignItems:'center', gap:10 }}>
+            <div key={s.label} style={{ flex:'1 1 0', background:'var(--surface-2)', border:'1px solid var(--line)', borderRadius:8, padding:'8px 14px', display:'flex', alignItems:'center', gap:10 }}>
               <div>
                 <div style={{ fontSize:18, fontWeight:800, color:s.c, lineHeight:1 }}>{s.val}</div>
-                <div style={{ fontSize:9, color:'var(--text-muted)', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:3 }}>{s.label}</div>
+                <div style={{ fontSize:9, color:'var(--fg-3)', textTransform:'uppercase', letterSpacing:'0.06em', marginTop:3 }}>{s.label}</div>
                 {s.sub && <div style={{ fontSize:10, color:s.c, marginTop:2, fontWeight:600 }}>{s.sub}</div>}
               </div>
             </div>

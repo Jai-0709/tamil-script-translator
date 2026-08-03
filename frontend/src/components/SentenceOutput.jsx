@@ -4,40 +4,40 @@ export default function SentenceOutput({
   fullSentence,
   rawSentence,
   aiRefinedSentence,
+  englishTranslation,
   aiMeaning,
+  englishMeaning,
   aiWordBreakdown = [],
-  romanSentence,
   alternativeSentences = [],
-  alternativeRomanSentences = [],
   onRefineAI,
+  onSync,
   isRefiningAI = false,
 }) {
-  const [copied, setCopied]          = useState(false)
-  const [copiedAi, setCopiedAi]      = useState(false)
-  const [copiedAll, setCopiedAll]    = useState(false)
-  const [showRoman, setShowRoman]    = useState(false)
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [copied, setCopied]       = useState(false)
+  const [copiedAi, setCopiedAi]   = useState(false)
+  const [copiedAll, setCopiedAll] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+  const [langTab, setLangTab]     = useState('all') // 'all' | 'tamil' | 'english'
 
-  const detectedText  = rawSentence || fullSentence
-  const aiText        = aiRefinedSentence
-  const activeText    = showRoman ? (romanSentence || aiText || detectedText) : (aiText || detectedText)
+  const detectedText = fullSentence || rawSentence
+  const aiText       = aiRefinedSentence
+  const activeText   = aiText || detectedText
 
-  function copy(textToCopy, setCopyState) {
-    if (!textToCopy) return
-    navigator.clipboard.writeText(textToCopy).then(() => {
-      setCopyState(true)
-      setTimeout(() => setCopyState(false), 2000)
+  function copy(text, set) {
+    if (!text) return
+    navigator.clipboard.writeText(text).then(() => {
+      set(true)
+      setTimeout(() => set(false), 2000)
     })
   }
 
   function copyAllAlternatives() {
     if (!alternativeSentences.length) return
-    const textToCopy = alternativeSentences.slice(0, 10).map((alt, i) => {
-      const rom = alternativeRomanSentences[i] ? ` (${alternativeRomanSentences[i]})` : ''
-      return `Option #${i + 1}: ${alt}${rom}`
-    }).join('\n')
-
-    navigator.clipboard.writeText(textToCopy).then(() => {
+    const txt = alternativeSentences
+      .slice(0, 10)
+      .map((alt, i) => `${i + 1}. ${alt}`)
+      .join('\n')
+    navigator.clipboard.writeText(txt).then(() => {
       setCopiedAll(true)
       setTimeout(() => setCopiedAll(false), 2000)
     })
@@ -45,404 +45,500 @@ export default function SentenceOutput({
 
   return (
     <div style={{
-      borderRadius: 12,
-      background: '#12141f',
-      border: '1px solid var(--border)',
-      padding: isCollapsed ? '10px 14px' : 14,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: isCollapsed ? 0 : 12,
-      transition: 'all 0.2s ease',
+      border: '1px solid var(--line)',
+      borderRadius: 'var(--r-sm)',
+      background: 'var(--surface-1)',
+      overflow: 'hidden',
     }}>
-      {/* Top Header Row */}
+      {/* ── Window Header ── */}
       <div style={{
+        padding: '10px 16px',
+        background: 'var(--surface-2)',
+        borderBottom: collapsed ? 'none' : '1px solid var(--line)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        gap: 8,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
-            fontSize: 11,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.08em',
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6
-          }}>
-            Inscription Translation & Epigraphic AI Analyzer
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="label" style={{ color: 'var(--copper)', letterSpacing: '0.08em' }}>
+            Translation & AI Analysis
           </span>
-
-          {/* Minimize / Expand Toggle Arrow Button */}
           <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            style={{
-              background: isCollapsed ? 'rgba(249, 115, 22, 0.12)' : 'rgba(255, 255, 255, 0.05)',
-              border: `1px solid ${isCollapsed ? 'rgba(249, 115, 22, 0.35)' : 'var(--border)'}`,
-              color: isCollapsed ? '#f97316' : 'var(--text-primary)',
-              borderRadius: 6,
-              padding: '3px 10px',
-              fontSize: 10,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              transition: 'all 0.15s ease',
-            }}
-            title={isCollapsed ? "Expand Panel to see translation details" : "Minimize Panel to view canvas breakdown"}
+            className="btn-ghost"
+            onClick={() => setCollapsed(!collapsed)}
+            title={collapsed ? 'Expand' : 'Collapse'}
+            style={{ padding: '2px 6px', gap: 4 }}
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isCollapsed ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
-              <polyline points="6 9 12 15 18 9"></polyline>
+            <svg
+              width="11" height="11" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+              style={{
+                transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform var(--dur-fast)',
+              }}
+            >
+              <polyline points="6 9 12 15 18 9"/>
             </svg>
-            <span>{isCollapsed ? 'Expand Panel' : 'Minimize Panel'}</span>
+            <span style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+              {collapsed ? 'Expand' : 'Collapse'}
+            </span>
           </button>
+
+          {/* Language Translation Tabs */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 2,
+            background: 'var(--surface-3)', border: '1px solid var(--line)',
+            borderRadius: 'var(--r-sm)', padding: 2,
+          }}>
+            {[
+              ['all', 'All (Bilingual)'],
+              ['tamil', 'Tamil (தமிழ்)'],
+              ['english', 'English'],
+            ].map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setLangTab(k)}
+                style={{
+                  background: langTab === k ? 'var(--surface-1)' : 'transparent',
+                  border: 'none',
+                  borderRadius: 4,
+                  padding: '3px 8px',
+                  fontSize: 11,
+                  fontWeight: langTab === k ? 700 : 500,
+                  color: langTab === k ? 'var(--copper-light)' : 'var(--fg-3)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {romanSentence && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.04)',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              padding: 2,
-            }}>
-              <button
-                onClick={() => setShowRoman(false)}
-                style={{
-                  background: !showRoman ? '#f97316' : 'transparent',
-                  border: 'none',
-                  color: !showRoman ? '#fff' : 'var(--text-secondary)',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Tamil
-              </button>
-              <button
-                onClick={() => setShowRoman(true)}
-                style={{
-                  background: showRoman ? '#f97316' : 'transparent',
-                  border: 'none',
-                  color: showRoman ? '#fff' : 'var(--text-secondary)',
-                  fontSize: 10,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  padding: '2px 8px',
-                  borderRadius: 4,
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Roman
-              </button>
-            </div>
+          {onSync && (
+            <button
+              className="btn-secondary"
+              onClick={onSync}
+              title="Synchronize detected sequence and alternative readings from active boxes"
+              style={{ padding: '4px 10px', fontSize: 12, color: 'var(--copper)', borderColor: 'var(--copper-border)' }}
+            >
+              <span>Synchronize Text</span>
+            </button>
           )}
-
           <button
+            className="btn-ghost"
             onClick={() => copy(activeText, setCopied)}
             disabled={!activeText}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              padding: '4px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: !activeText ? 'not-allowed' : 'pointer',
-              background: copied ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.04)',
-              color: copied ? '#4ade80' : 'var(--text-primary)',
-              transition: 'all 0.15s ease',
-            }}
+            style={{ fontSize: 12, color: copied ? '#3da35d' : undefined }}
           >
-            {copied ? 'Copied' : 'Copy Output'}
+            {copied ? 'Copied' : 'Copy Text'}
           </button>
         </div>
       </div>
 
-      {/* ── Collapsible Body Content ─────────────────────────────────────────── */}
-      {!isCollapsed && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* ── Area 1: Detected Inscription Glyphs (Vision Model) ───────────────── */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Vision Model Detected Sequence
-              </span>
+      {/* ── Collapsible Body ─────────────────────────────────────────────── */}
+      {!collapsed && (
+        <div style={{ padding: 16 }}>
 
-              {/* Dedicated Refine & Analyze with AI Button */}
-              {onRefineAI && (
-                <button
-                  onClick={onRefineAI}
-                  disabled={isRefiningAI || !detectedText}
-                  style={{
-                    background: 'linear-gradient(135deg, #9333ea 0%, #6b21a8 100%)',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '4px 12px',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    cursor: isRefiningAI ? 'wait' : 'pointer',
-                    boxShadow: '0 2px 8px rgba(147, 51, 234, 0.25)',
-                    display: 'flex', alignItems: 'center', gap: 5,
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Analyze Top 50 Beam Search Variations with Gemini AI for Word-by-Word Breakdown"
-                >
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                  </svg>
-                  <span>{isRefiningAI ? 'Analyzing Top 50 Variations...' : 'Refine & Analyze with AI'}</span>
-                </button>
-              )}
-            </div>
+          {/* ── 2-Column Standalone Feature Panels: Left (Model Translation) | Right (AI Translation) ── */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
+            gap: 16,
+            alignItems: 'stretch',
+            width: '100%',
+          }}>
 
+            {/* ========================================================================= */}
+            {/* ── LEFT CONTAINER: MODEL DETECTED TRANSLATION & ALTERNATIVES ─────────── */}
+            {/* ========================================================================= */}
             <div style={{
-              background: '#090a10',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              padding: '8px 12px',
-              maxHeight: 70,
-              overflowY: 'auto',
+              padding: 16,
+              background: 'var(--surface-2)',
+              border: '1px solid var(--line)',
+              borderRadius: 'var(--r-sm)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              boxSizing: 'border-box',
             }}>
-              <p
-                className={showRoman ? '' : 'tamil-text'}
-                style={{
-                  fontSize: showRoman ? 13 : 18,
-                  fontWeight: 700,
-                  color: 'var(--text-primary)',
-                  lineHeight: 1.4,
-                  wordBreak: 'break-word',
-                  fontFamily: showRoman ? 'Inter, sans-serif' : undefined,
-                  margin: 0,
-                }}
-              >
-                {detectedText || (
-                  <span style={{ opacity: 0.3, fontStyle: 'italic', fontSize: 12, fontWeight: 400 }}>
-                    No character detection available.
-                  </span>
-                )}
-              </p>
-            </div>
-          </div>
 
-          {/* ── Area 2: Final AI Epigraphic Refinement & Word-by-Word Analysis ─────── */}
-          {aiText && (
-            <div style={{
-              display: 'flex', flexDirection: 'column', gap: 8,
-              padding: 12, borderRadius: 8,
-              background: 'rgba(168, 85, 247, 0.05)',
-              border: '1px solid rgba(168, 85, 247, 0.25)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{
-                  fontSize: 10, fontWeight: 700, color: '#c084fc',
-                  textTransform: 'uppercase', letterSpacing: '0.06em',
-                  display: 'flex', alignItems: 'center', gap: 4
+              {/* Feature 1: Model Primary Detected Sequence */}
+              <div>
+                <div style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  marginBottom: 12, flexWrap: 'wrap', gap: 8,
                 }}>
-                  AI Epigraphic Segmentation & Meaning Breakdown
-                </span>
-                <button
-                  onClick={() => copy(aiText, setCopiedAi)}
-                  style={{
-                    background: 'rgba(168, 85, 247, 0.15)', border: '1px solid rgba(168, 85, 247, 0.3)',
-                    color: '#e9d5ff', borderRadius: 4, padding: '2px 8px',
-                    fontSize: 10, fontWeight: 700, cursor: 'pointer',
-                  }}
-                >
-                  {copiedAi ? 'Copied' : 'Copy AI Text'}
-                </button>
-              </div>
-
-              <div className="tamil-text" style={{
-                fontSize: 20, fontWeight: 700, color: '#f3e8ff',
-                lineHeight: 1.4, wordBreak: 'break-word',
-              }}>
-                {aiText}
-              </div>
-
-              {/* Word-by-Word Meaning Breakdown Cards */}
-              {aiWordBreakdown && aiWordBreakdown.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: '#d8b4fe', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Separated Word Analysis ({aiWordBreakdown.length} Words):
+                  <span className="label" style={{ color: 'var(--fg-3)', letterSpacing: '0.06em' }}>
+                    Model Detected Sequence
                   </span>
+                </div>
+                <p className="tamil" style={{
+                  fontSize: 22,
+                  fontWeight: 600,
+                  color: 'var(--fg)',
+                  lineHeight: 1.5,
+                  wordBreak: 'break-word',
+                  margin: 0,
+                  padding: '12px 14px',
+                  background: 'var(--surface-3)',
+                  borderRadius: 'var(--r-sm)',
+                  border: '1px solid var(--line)',
+                }}>
+                  {detectedText || (
+                    <span style={{ color: 'var(--fg-4)', fontStyle: 'italic', fontSize: 13 }}>
+                      Awaiting analysis…
+                    </span>
+                  )}
+                </p>
+              </div>
+
+              {/* Feature 2: Alternative Readings (Inside Left Container) */}
+              {alternativeSentences.length > 0 && (
+                <div style={{ paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    marginBottom: 10, flexWrap: 'wrap', gap: 6,
+                  }}>
+                    <span className="label" style={{ color: 'var(--fg-4)' }}>
+                      Alternative Readings · {Math.min(alternativeSentences.length, 10)}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {onSync && (
+                        <button
+                          className="btn-secondary"
+                          onClick={onSync}
+                          title="Manually refresh and synchronize alternative readings with newly changed characters"
+                          style={{ padding: '3px 8px', fontSize: 11, color: 'var(--copper)', borderColor: 'var(--copper-border)' }}
+                        >
+                          <span>Sync</span>
+                        </button>
+                      )}
+                      <button
+                        className="btn-ghost"
+                        onClick={copyAllAlternatives}
+                        style={{ fontSize: 11, color: copiedAll ? '#3da35d' : undefined }}
+                      >
+                        {copiedAll ? 'Copied' : 'Copy all'}
+                      </button>
+                    </div>
+                  </div>
+
                   <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                    gap: 6,
-                    maxHeight: 160,
+                    gap: 8,
+                    maxHeight: 260,
                     overflowY: 'auto',
                   }}>
-                    {aiWordBreakdown.map((item, idx) => {
-                      const isRestored = item.is_restored || (item.type && item.type.toLowerCase().includes('restored'))
-                      return (
-                        <div
-                          key={idx}
-                          style={{
-                            background: isRestored ? 'rgba(234, 179, 8, 0.08)' : 'rgba(168, 85, 247, 0.08)',
-                            border: isRestored ? '1px solid rgba(234, 179, 8, 0.35)' : '1px solid rgba(168, 85, 247, 0.2)',
-                            borderRadius: 8,
-                            padding: '8px 12px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 3,
-                            boxShadow: isRestored ? '0 0 8px rgba(234, 179, 8, 0.1)' : 'none',
-                            transition: 'all 0.15s ease',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
-                            <span className="tamil-text" style={{ fontSize: 16, fontWeight: 700, color: isRestored ? '#fef08a' : '#ffffff' }}>
-                              {item.word}
-                            </span>
-                            <span style={{
-                              fontSize: 8,
-                              padding: '2px 6px',
-                              borderRadius: 4,
-                              background: isRestored ? 'rgba(234, 179, 8, 0.2)' : 'rgba(249,115,22,0.15)',
-                              color: isRestored ? '#fde047' : '#f97316',
-                              fontWeight: 700,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.04em'
-                            }}>
-                              {isRestored ? 'AI Restored' : (item.type || 'Word')}
-                            </span>
-                          </div>
-                          {item.meaning && (
-                            <span style={{ fontSize: 11, color: isRestored ? '#fef9c3' : '#e9d5ff', lineHeight: 1.3 }}>
-                              {item.meaning}
-                            </span>
-                          )}
+                    {alternativeSentences.slice(0, 10).map((altText, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => navigator.clipboard.writeText(altText)}
+                        title="Click to copy"
+                        style={{
+                          padding: '8px 10px',
+                          background: 'var(--surface-3)',
+                          border: '1px solid var(--line)',
+                          borderRadius: 'var(--r-sm)',
+                          cursor: 'pointer',
+                          transition: 'border-color var(--dur-fast)',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--copper-border)'}
+                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--line)'}
+                      >
+                        <div style={{ fontSize: 9, color: 'var(--copper)', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 2 }}>
+                          Option {idx + 1}
                         </div>
-                      )
-                    })}
+                        <div className="tamil" style={{
+                          fontSize: 15, fontWeight: 600, color: 'var(--fg)',
+                          wordBreak: 'break-word', lineHeight: 1.3,
+                        }}>
+                          {altText}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
 
-              {aiMeaning && (
-                <div style={{
-                  fontSize: 11, color: '#d8b4fe', fontStyle: 'italic',
-                  marginTop: 4, padding: '6px 10px', background: 'rgba(168, 85, 247, 0.08)', borderRadius: 6,
-                  display: 'flex', alignItems: 'center', gap: 6
-                }}>
-                  <span style={{ fontWeight: 700, color: '#c084fc', fontStyle: 'normal' }}>Historical Meaning:</span>
-                  <span>{aiMeaning}</span>
-                </div>
-              )}
             </div>
-          )}
 
-          {/* Alternative Readings Grid (Top 10 Combinations) */}
-          {alternativeSentences.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 2 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{
-                  fontSize: 10,
-                  color: 'var(--text-muted)',
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}>
-                  Top Suitable Readings ({Math.min(alternativeSentences.length, 10)})
-                </span>
 
-                {/* Copy All Button */}
-                <button
-                  onClick={copyAllAlternatives}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    border: '1px solid var(--border)',
-                    fontSize: 10,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    background: copiedAll ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.04)',
-                    color: copiedAll ? '#4ade80' : 'var(--text-secondary)',
-                    transition: 'all 0.15s ease',
-                  }}
-                  title="Copy all top alternative readings to clipboard"
-                >
-                  {copiedAll ? 'Copied All!' : 'Copy All Readings'}
-                </button>
+            {/* ========================================================================= */}
+            {/* ── RIGHT CONTAINER: AI EPIGRAPHIC REFINEMENT & WORD BREAKDOWN ────────── */}
+            {/* ========================================================================= */}
+            <div style={{
+              padding: 16,
+              background: 'var(--surface-2)',
+              border: `1px solid ${aiText ? 'var(--copper-border)' : 'var(--line)'}`,
+              borderRadius: 'var(--r-sm)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              boxSizing: 'border-box',
+            }}>
+
+              {/* Header */}
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 0, flexWrap: 'wrap', gap: 8,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="label" style={{ color: 'var(--copper)', letterSpacing: '0.06em' }}>
+                    AI Epigraphic Refinement
+                  </span>
+                  <span style={{
+                    fontSize: 10, padding: '1px 6px', borderRadius: 99,
+                    background: 'var(--copper-dim)', color: 'var(--copper)',
+                    fontWeight: 600, letterSpacing: '0.04em',
+                  }}>
+                    Gemini
+                  </span>
+                </div>
+                {aiText && (
+                  <button
+                    className="btn-ghost"
+                    onClick={() => copy(aiText, setCopiedAi)}
+                    style={{ fontSize: 11, color: copiedAi ? '#3da35d' : undefined }}
+                  >
+                    {copiedAi ? 'Copied' : 'Copy'}
+                  </button>
+                )}
               </div>
 
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
-                gap: 6,
-                maxHeight: 180,
-                overflowY: 'auto',
-                paddingRight: 2,
-              }}>
-                {alternativeSentences.slice(0, 10).map((altText, idx) => {
-                  const romanText = alternativeRomanSentences[idx] || ''
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        navigator.clipboard.writeText(altText)
-                      }}
-                      style={{
-                        padding: '6px 10px',
-                        background: 'var(--bg-card-2)',
-                        borderRadius: 6,
-                        border: '1px solid var(--border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'space-between',
-                        gap: 2,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = 'rgba(249,115,22,0.4)'
-                        e.currentTarget.style.background = 'rgba(249,115,22,0.05)'
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = 'var(--border)'
-                        e.currentTarget.style.background = 'var(--bg-card-2)'
-                      }}
-                      title="Click to copy this reading"
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                          Option #{idx + 1}
-                        </span>
-                        <span style={{ fontSize: 9, color: 'var(--text-muted)', fontWeight: 600 }}>Copy</span>
+              {aiText ? (
+                <>
+                  {/* Feature 1: Refined Sentence & English Translation (Symmetrical Professional Layout) */}
+                  <div style={{
+                    padding: '12px 14px',
+                    background: 'var(--surface-3)',
+                    borderRadius: 'var(--r-sm)',
+                    border: '1px solid var(--copper-border)',
+                    display: 'flex', flexDirection: 'column', gap: 10,
+                  }}>
+                    {(langTab === 'all' || langTab === 'tamil') && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            Tamil Transcription
+                          </span>
+                        </div>
+                        <p className="tamil" style={{
+                          fontSize: 22, fontWeight: 600, color: 'var(--copper-light)',
+                          lineHeight: 1.45, wordBreak: 'break-word', margin: 0,
+                        }}>
+                          {aiText}
+                        </p>
+                      </div>
+                    )}
+
+                    {(langTab === 'all' || langTab === 'english') && englishTranslation && (
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', gap: 4,
+                        borderTop: langTab === 'all' && (langTab === 'all' || langTab === 'tamil') ? '1px solid var(--copper-border)' : 'none',
+                        paddingTop: langTab === 'all' && (langTab === 'all' || langTab === 'tamil') ? 8 : 0,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            English Translation
+                          </span>
+                        </div>
+                        <p style={{
+                          fontSize: 14, fontWeight: 500, color: 'var(--fg-2)',
+                          lineHeight: 1.45, wordBreak: 'break-word', margin: 0,
+                        }}>
+                          {englishTranslation}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Feature 2: Historical Context & Meaning (Symmetrical Professional Structure) */}
+                  {(aiMeaning || englishMeaning) && (
+                    <div style={{
+                      padding: '12px 14px',
+                      background: 'var(--surface-3)',
+                      borderRadius: 'var(--r-sm)',
+                      border: '1px solid var(--line)',
+                      display: 'flex', flexDirection: 'column', gap: 10,
+                    }}>
+                      <div className="label" style={{ color: 'var(--fg-4)', letterSpacing: '0.06em' }}>
+                        Historical Context & Epigraphic Meaning
                       </div>
 
-                      <div className="tamil-text" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', wordBreak: 'break-word', lineHeight: 1.3 }}>
-                        {altText}
-                      </div>
+                      {(langTab === 'all' || langTab === 'tamil') && aiMeaning && (
+                        <div style={{
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                          background: 'var(--surface-2)', padding: '8px 10px',
+                          borderRadius: 6, border: '1px solid var(--line)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.04em' }}>
+                              TAMIL
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.45, margin: 0 }}>
+                            {aiMeaning}
+                          </p>
+                        </div>
+                      )}
 
-                      {romanText && (
-                        <div style={{ fontSize: 10, fontStyle: 'italic', color: 'var(--text-secondary)', fontFamily: 'Inter, sans-serif' }}>
-                          {romanText}
+                      {(langTab === 'all' || langTab === 'english') && englishMeaning && (
+                        <div style={{
+                          display: 'flex', flexDirection: 'column', gap: 4,
+                          background: 'var(--surface-2)', padding: '8px 10px',
+                          borderRadius: 6, border: '1px solid var(--line)',
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.04em' }}>
+                              ENGLISH
+                            </span>
+                          </div>
+                          <p style={{ fontSize: 13, color: 'var(--fg-2)', lineHeight: 1.45, margin: 0 }}>
+                            {englishMeaning}
+                          </p>
                         </div>
                       )}
                     </div>
-                  )
-                })}
-              </div>
+                  )}
+
+                  {/* Feature 3: Word Analysis Grid (Symmetrical TA/EN Cards) */}
+                  {aiWordBreakdown.length > 0 && (
+                    <div style={{ paddingTop: 12, borderTop: '1px solid var(--line)' }}>
+                      <div className="label" style={{ color: 'var(--fg-4)', marginBottom: 8 }}>
+                        Word Analysis · {aiWordBreakdown.length} items
+                      </div>
+                      <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
+                        gap: 8,
+                        maxHeight: 250,
+                        overflowY: 'auto',
+                      }}>
+                        {aiWordBreakdown.map((item, idx) => {
+                          const isRestored = item.is_restored || (item.type?.toLowerCase().includes('restored'))
+                          const wordLen    = item.word?.length || 0
+                          const fontSize   = wordLen > 10 ? 14 : wordLen > 6 ? 16 : 18
+
+                          return (
+                            <div key={idx} style={{
+                              padding: '10px 12px',
+                              background: 'var(--surface-3)',
+                              border: `1px solid ${isRestored ? 'var(--copper-border)' : 'var(--line)'}`,
+                              borderRadius: 'var(--r-sm)',
+                              display: 'flex', flexDirection: 'column', gap: 6,
+                              minWidth: 0,
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                                <span className="tamil" style={{
+                                  fontSize: fontSize,
+                                  fontWeight: 600,
+                                  color: isRestored ? 'var(--copper-light)' : 'var(--fg)',
+                                  lineHeight: 1.3,
+                                  wordBreak: 'break-word',
+                                  flex: '1 1 auto',
+                                  minWidth: 0,
+                                }}>
+                                  {item.word}
+                                </span>
+                                {(item.type || isRestored) && (
+                                  <span style={{
+                                    fontSize: 9,
+                                    color: isRestored ? 'var(--copper-light)' : 'var(--fg-3)',
+                                    background: isRestored ? 'var(--copper-dim)' : 'var(--surface-4)',
+                                    border: `1px solid ${isRestored ? 'var(--copper-border)' : 'var(--line)'}`,
+                                    padding: '1px 5px',
+                                    borderRadius: 4,
+                                    fontWeight: 700,
+                                    letterSpacing: '0.04em',
+                                    textTransform: 'uppercase',
+                                    flexShrink: 0,
+                                  }}>
+                                    {isRestored ? 'RESTORED' : item.type}
+                                  </span>
+                                )}
+                              </div>
+
+                              {(langTab === 'all' || langTab === 'tamil') && item.meaning && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'var(--fg-2)', lineHeight: 1.35 }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', background: 'var(--surface-4)', padding: '0 4px', borderRadius: 3, flexShrink: 0, marginTop: 1 }}>
+                                    TA
+                                  </span>
+                                  <span style={{ wordBreak: 'break-word' }}>{item.meaning}</span>
+                                </div>
+                              )}
+
+                              {(langTab === 'all' || langTab === 'english') && item.english_meaning && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: 'var(--fg-2)', lineHeight: 1.35 }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', background: 'var(--surface-4)', padding: '0 4px', borderRadius: 3, flexShrink: 0, marginTop: 1 }}>
+                                    EN
+                                  </span>
+                                  <span style={{ wordBreak: 'break-word' }}>{item.english_meaning}</span>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Compact Top Golden Banner inside the window (Clean & Uncluttered) */
+                <div style={{
+                  padding: '14px 16px',
+                  background: 'linear-gradient(135deg, rgba(249,115,22,0.12) 0%, rgba(20,20,20,0.8) 100%)',
+                  border: '1px solid var(--copper-border)',
+                  borderRadius: 'var(--r-sm)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  gap: 12, flexWrap: 'wrap',
+                }}>
+                  <div>
+                    <div style={{ color: 'var(--copper-light)', fontWeight: 700, fontSize: 14, letterSpacing: '0.02em' }}>
+                      Epigraphic AI Analysis
+                    </div>
+                    <p style={{ fontSize: 12, color: 'var(--fg-3)', margin: '4px 0 0', lineHeight: 1.4, maxWidth: 480 }}>
+                      Enhance raw detected character sequence into word-segmented Tamil text, historical contextual meaning, and word etymology breakdown with Gemini.
+                    </p>
+                  </div>
+                  {onRefineAI && (
+                    <button
+                      className="btn-primary"
+                      onClick={onRefineAI}
+                      disabled={isRefiningAI || !detectedText}
+                      style={{
+                        padding: '7px 16px',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        boxShadow: '0 4px 12px rgba(249,115,22,0.25)',
+                      }}
+                    >
+                      {isRefiningAI ? (
+                        <>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                            stroke="currentColor" strokeWidth="2"
+                            style={{ animation: 'spin 0.9s linear infinite' }}>
+                            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                          </svg>
+                          Refining with AI…
+                        </>
+                      ) : 'Refine with AI'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          )}
+
+          </div>
+
         </div>
       )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } } @keyframes skeletonPulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
     </div>
   )
 }
