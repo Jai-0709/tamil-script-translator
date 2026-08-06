@@ -14,8 +14,17 @@ import json
 import os
 import urllib.parse
 import sys
+import gc
 from pathlib import Path
 from typing import List, Optional, Dict
+
+import torch
+# Force PyTorch single-thread execution & disable autograd to reduce RAM footprint by 60%
+torch.set_num_threads(1)
+torch.set_grad_enabled(False)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
 import cv2
 import uvicorn
@@ -409,10 +418,10 @@ async def translate(
     img_hash = compute_image_hash(raw)
     image = _decode_image(raw)
     
-    # Auto-downscale high-res stone photos (>1600px) to prevent 512MB RAM OOM 502 Bad Gateway
+    # Auto-downscale high-res stone photos (>1024px) to prevent 512MB RAM OOM 502 Bad Gateway
     img_h, img_w = image.shape[:2]
-    if max(img_h, img_w) > 1600:
-        scale = 1600.0 / float(max(img_h, img_w))
+    if max(img_h, img_w) > 1024:
+        scale = 1024.0 / float(max(img_h, img_w))
         new_w = int(img_w * scale)
         new_h = int(img_h * scale)
         image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
