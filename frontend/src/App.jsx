@@ -19,6 +19,20 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 axios.defaults.headers.common['Bypass-Tunnel-Reminder'] = 'true'
 axios.defaults.headers.common['ngrok-skip-browser-warning'] = 'true'
 
+// Global window.fetch interceptor for native fetch calls (refine-ai, dataset/stats, memory/summary)
+if (typeof window !== 'undefined' && window.fetch) {
+  const _origFetch = window.fetch
+  window.fetch = function (url, options) {
+    const opts = options || {}
+    opts.headers = {
+      ...(opts.headers || {}),
+      'Bypass-Tunnel-Reminder': 'true',
+      'ngrok-skip-browser-warning': 'true'
+    }
+    return _origFetch(url, opts)
+  }
+}
+
 const LS_KEY = 'tamil_corrections'
 function loadCorrections() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
