@@ -269,7 +269,7 @@ def extract_features(crop: np.ndarray) -> List[float]:
 
 
 @torch.no_grad()
-def classify_batch(crops: List[np.ndarray], batch_size: int = 8) -> List[Dict]:
+def classify_batch(crops: List[np.ndarray], batch_size: int = 32) -> List[Dict]:
     """
     Classify a list of BGR image crops in mini-batches to keep memory usage low.
 
