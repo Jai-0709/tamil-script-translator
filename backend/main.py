@@ -408,7 +408,15 @@ async def translate(
     raw   = await file.read()
     img_hash = compute_image_hash(raw)
     image = _decode_image(raw)
+    
+    # Auto-downscale high-res stone photos (>1600px) to prevent 512MB RAM OOM 502 Bad Gateway
     img_h, img_w = image.shape[:2]
+    if max(img_h, img_w) > 1600:
+        scale = 1600.0 / float(max(img_h, img_w))
+        new_w = int(img_w * scale)
+        new_h = int(img_h * scale)
+        image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        img_h, img_w = image.shape[:2]
 
     # ── 2. Segment ──────────────────────────────────────────────────────
     import json
