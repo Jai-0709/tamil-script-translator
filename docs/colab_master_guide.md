@@ -1,6 +1,6 @@
-# 🚀 Google Colab Free NVIDIA T4 GPU Master Deployment Manual
+# 🚀 Google Colab Free NVIDIA T4 GPU Master Deployment Manual (Zero-511 Authentication)
 
-This guide will walk you through hosting your high-level **YOLOv8 Segmentation Model (`best.pt`)** and **Vision Transformer (ViT) Classifier (`ancient_tamil_classifier.pth`)** on a **100% FREE NVIDIA T4 GPU (16 GB VRAM)** using Google Colab.
+This guide will walk you through hosting your high-level **YOLOv8 Segmentation Model (`best.pt`)** and **Vision Transformer (ViT) Classifier (`ancient_tamil_classifier.pth`)** on a **100% FREE NVIDIA T4 GPU (16 GB VRAM)** using Google Colab with **Pinggy Tunnel (No 511 Password Page)**.
 
 ---
 
@@ -33,7 +33,7 @@ Copy the code block below, paste it into the empty Colab code cell, replace `you
 
 ```python
 # ==============================================================================
-#  CLASSICAL TAMIL EPIGRAPHY SUITE — GOOGLE COLAB FREE T4 GPU SERVER
+#  CLASSICAL TAMIL EPIGRAPHY SUITE — GOOGLE COLAB FREE T4 GPU SERVER (PINGGY TUNNEL)
 # ==============================================================================
 
 import os
@@ -46,7 +46,6 @@ print("1. Cloning repository from GitHub...")
 
 print("2. Installing PyTorch GPU & backend dependencies...")
 !pip install -q -r backend/requirements.txt
-!npm install -g localtunnel
 
 print("3. Setting GPU & API environment variables...")
 os.environ["GEMINI_API_KEY"] = "your_actual_gemini_api_key"
@@ -60,23 +59,17 @@ print("\n" + "="*70)
 print("  🚀 YOUR FREE NVIDIA T4 GPU BACKEND IS NOW LIVE!")
 print("="*70 + "\n")
 
-# Print Colab external IP for Localtunnel password prompt
-!curl -s https://ipv4.icanhazip.com
-print("^ Copy this IP address (you may need it once when opening Localtunnel)\n")
-
-# Expose public HTTPS GPU API URL
-!npx localtunnel --port 7860
+# Start Pinggy HTTPS Tunnel (100% Free, NO 511 Password Page!)
+!ssh -o StrictHostKeyChecking=no -p 443 -R 0:localhost:7860 a.pinggy.io
 ```
 
 ---
 
-## 🌐 STEP 3: Get Your Free Public GPU API URL
+## 🌐 STEP 3: Copy Your Live HTTPS Pinggy GPU URL
 
-1. After the script runs, Colab will display a public URL ending in `.loca.lt` (for example: `https://famous-bears-run.loca.lt`).
-2. Click or copy that URL.
-3. If Localtunnel asks for an **Endpoint IP / Password**:
-   - Paste the IP address displayed right above the URL in your Colab logs $\rightarrow$ Click **`Click to Submit`**.
-   - You will see: `{"status":"online","message":"Classical Tamil Epigraphy Suite API","version":"2.0.0"}`.
+1. Pinggy will output a clean public HTTPS URL (for example: `https://rnkjg-123-456.a.pinggy.link`).
+2. Copy that URL.
+3. Because Pinggy has **zero password pages**, your API calls will connect instantly without any 511 errors!
 
 ---
 
@@ -86,7 +79,7 @@ print("^ Copy this IP address (you may need it once when opening Localtunnel)\n"
 2. Click your project **`tamil-script-translator`**.
 3. Go to **`Settings`** (top menu) $\rightarrow$ **`Environment Variables`** (left menu).
 4. Find or edit **`VITE_BACKEND_URL`**:
-   - **Value**: `https://famous-bears-run.loca.lt` *(Paste your live Colab URL from Step 3)*.
+   - **Value**: `https://rnkjg-123-456.a.pinggy.link` *(Paste your live Pinggy URL from Step 3)*.
 5. Click **`Save`**.
 6. On the top menu, click **`Deployments`** $\rightarrow$ Click the **`...`** button next to your latest deployment $\rightarrow$ Select **`Redeploy`**!
 
@@ -96,4 +89,4 @@ print("^ Copy this IP address (you may need it once when opening Localtunnel)\n"
 
 1. Open your live website: **`https://tamil-script-translator.vercel.app`**.
 2. Upload any high-resolution stone inscription photo.
-3. Click **`Analyse`** $\rightarrow$ Your trained YOLOv8 model (`best.pt`) and Vision Transformer classifier will process the image on your **FREE NVIDIA T4 GPU in 0.05 seconds** with **zero errors**!
+3. Click **`Analyse`** $\rightarrow$ Your trained YOLOv8 model (`best.pt`) and Vision Transformer classifier will process the image on your **FREE NVIDIA T4 GPU in 0.05 seconds** with **zero 511 errors**!
