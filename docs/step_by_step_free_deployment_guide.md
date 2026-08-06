@@ -29,18 +29,15 @@ We will host the Python FastAPI backend with your trained models on **Render Fre
 - Search for your repository **`Jai-0709/tamil-script-translator`** $\rightarrow$ Click **`Connect`**.
 
 ### **Step 4: Fill in Render Backend Settings**
-Fill in the deployment form with the following exact values:
+Render automatically detects the repository configuration:
 
-| Field | Value to Enter |
+| Field | Value to Enter / Select |
 | :--- | :--- |
-| **Name** | `tamil-epigraphy-backend` |
-| **Region** | Select closest region (e.g. `Singapore` or `Oregon`) |
+| **Name** | `tamil-epigraphy-backend` (or `tamil-script-translator`) |
+| **Language** | **`Docker`** *(Autofilled by Render — 100% Free!)* or **`Python 3`** |
 | **Branch** | `main` |
-| **Root Directory** | *(Leave blank)* |
-| **Runtime** | **`Python 3`** *(Native Python — 100% Free!)* |
-| **Build Command** | `pip install -r backend/requirements.txt` |
-| **Start Command** | `python app.py` |
-| **Instance Type** | Select **`Free`** **($0 / month)** |
+| **Region** | Select closest region (e.g. `Singapore`) |
+| **Instance Type** | Select **`Free`** **($0 / month)** *(512 MB RAM, 0.1 CPU)* |
 
 ### **Step 5: Add Your Gemini API Key**
 - Scroll down to the **Environment Variables** section.
@@ -50,11 +47,11 @@ Fill in the deployment form with the following exact values:
 
 ### **Step 6: Deploy Backend**
 - Scroll to the bottom and click **`Create Web Service`**.
-- Render will start installing dependencies and starting the server. This takes **2-3 minutes**.
+- Render will start building the server for **$0 / Free**. This takes **2-3 minutes**.
 
 ### **Step 7: Copy Your Live Backend URL**
 - Once deployment finishes and shows **`Live`**, look at the top left under the project name.
-- Copy your live backend URL (it will look like: `https://tamil-epigraphy-backend.onrender.com`).
+- Copy your live backend URL (e.g. `https://tamil-script-translator.onrender.com`).
 
 ---
 
@@ -70,37 +67,24 @@ Now we will host the React frontend on **Vercel** and connect it to your live Re
 - Find your repository **`Jai-0709/tamil-script-translator`** $\rightarrow$ Click **`Import`**.
 
 ### **Step 3: Configure Vercel Project Settings**
-- **Project Name**: `tamil-script-translator` *(or any name you like)*.
-- **Framework Preset**: Select **`Vite`** *(should be automatically selected)*.
+- **Project Name**: `tamil-script-translator`
+- **Framework Preset**: Select **`Vite`**
 - **Root Directory**: Click **Edit** $\rightarrow$ Select the **`frontend`** folder $\rightarrow$ Click **Save**.
 
 ### **Step 4: Add Environment Variable to Connect to Backend**
 - Expand the **`Environment Variables`** section.
 - Add the following variable:
   - **Name**: `VITE_BACKEND_URL`
-  - **Value**: `https://tamil-epigraphy-backend.onrender.com` *(Paste the exact URL you copied from Render in Phase 1)*
+  - **Value**: `https://tamil-script-translator.onrender.com` *(Paste your Render URL from Phase 1)*
 
 ### **Step 5: Deploy Frontend**
 - Click the blue **`Deploy`** button.
 - Vercel will build your website in **~45 seconds**.
-
-### **Step 6: Open Your Live Web Application!**
-- Click **`Continue to Dashboard`** or click the **`Visit`** button.
-- Your website is now **100% LIVE ON THE INTERNET FOR $0.00!** (e.g. `https://tamil-script-translator.vercel.app`).
-
----
-
-## 🧪 PHASE 3: Final Verification & Testing
-
-1. Open your live Vercel URL on your phone or computer.
-2. Click **`Open Workspace`**.
-3. Upload any stone inscription image (or choose a sample photo).
-4. Click **`Analyse`** $\rightarrow$ Verify that bounding box segmentation, character classification, and Gemini AI line-by-line bilingual Tamil & English translation load smoothly!
 
 ---
 
 ## 🎯 Summary of Your Live URLs
 
 - 🟢 **Frontend Web Application (Vercel)**: `https://tamil-script-translator.vercel.app`
-- 🟢 **Backend API Server (Render)**: `https://tamil-epigraphy-backend.onrender.com`
+- 🟢 **Backend API Server (Render)**: `https://tamil-script-translator.onrender.com`
 - 💰 **Total Monthly Cost**: **$0.00 / FREE FOREVER**
