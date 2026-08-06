@@ -232,7 +232,7 @@ export default function App() {
       form.append('file', fileToSend)
       form.append('merge_gap', String(gapOverride))
 
-      const data = await axios.post(`${BACKEND_URL}/translate`, form).then(r => r.data)
+      const data = await axios.post(`${BACKEND_URL}/translate`, form, { timeout: 180000 }).then(r => r.data)
       setApiResponse(data)
       if (!regionOverride) {
         fullInscriptionApiResponseRef.current = data
