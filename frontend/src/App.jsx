@@ -15,6 +15,10 @@ import MemoryStudio from './pages/MemoryStudio'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
+// Global Axios defaults to bypass Localtunnel 511 & Ngrok warning pages
+axios.defaults.headers.common['Bypass-Tunnel-Reminder'] = 'true'
+axios.defaults.headers.common['ngrok-skip-browser-warning'] = 'true'
+
 const LS_KEY = 'tamil_corrections'
 function loadCorrections() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
