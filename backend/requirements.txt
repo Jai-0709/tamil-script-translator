@@ -10,6 +10,7 @@ requests>=2.31.0
 # AI / Deep Learning Models (Lightweight CPU Wheels for Free Servers)
 torch>=2.0.0
 torchvision>=0.15.0
+timm>=0.9.0
 ultralytics>=8.0.0
 google-generativeai>=0.5.0
 
