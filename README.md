@@ -13,7 +13,7 @@
 
 ## 📌 Executive Overview
 
-The **Classical Tamil Epigraphy Suite v2.0** is a end-to-end computational epigraphy and optical character recognition (OCR) platform tailored for reading, segmenting, classifying, and translating ancient Tamil stone inscriptions (கல்வெட்டுகள்), palm-leaf manuscripts, and temple rubbings into modern Tamil and fluent English.
+The **Classical Tamil Epigraphy Suite v2.0** is an end-to-end computational epigraphy and optical character recognition (OCR) platform tailored for reading, segmenting, classifying, and translating ancient Tamil stone inscriptions (கல்வெட்டுகள்), palm-leaf manuscripts, and temple rubbings into modern Tamil and fluent English.
 
 Combining **YOLO Smart-Tiled Contour Segmentation**, a **ResNet 247-Class Modern Tamil Glyph Classifier**, a **Real-Time Vector Memory Store**, and **Gemini Epigraphic Context Refinement**, the suite provides line-by-line inscriptional translation, grammatical breakdown, and epigraphic gold weight conservation.
 
@@ -62,34 +62,6 @@ graph TD
 
 ---
 
-## 📁 Repository Directory Structure
-
-```
-TAMIL SCRIPT VERSION 2/
-├── backend/                  # FastAPI Python Backend
-│   ├── main.py               # Main API endpoints (/api/segment, /api/gemini/refine)
-│   ├── gemini_engine.py      # Gemini AI Epigraphic Prompt Engine
-│   ├── segmentation.py       # YOLO & OpenCV Contour Segmentation Logic
-│   ├── classification.py     # ResNet 247-Class Classifier
-│   ├── memory_store.py       # Vector Feature & Layout Memory Store
-│   └── requirements.txt      # Python dependencies
-├── frontend/                 # React + Vite Frontend App
-│   ├── src/
-│   │   ├── components/       # InscriptionCanvas, OriginalImageViewer, Navbar, SentenceOutput
-│   │   ├── pages/            # LandingPage, DatasetStudio, MemoryStudio
-│   │   ├── App.jsx           # Main Workspace Controller
-│   │   └── index.css         # Apple-inspired Responsive Design System
-│   ├── package.json
-│   └── vite.config.js
-├── models/                   # Model Checkpoints & Metadata
-├── scripts/                  # Training & Dataset Preparation Utility Scripts
-├── docs/                     # Documentation & Hosting Guides
-├── .gitignore                # Clean Git ignore configuration
-└── README.md                 # Master Project Documentation
-```
-
----
-
 ## ⚡ Local Installation & Quickstart
 
 ### Prerequisites
@@ -116,7 +88,7 @@ pip install -r backend/requirements.txt
 set GEMINI_API_KEY=your_actual_gemini_api_key
 
 # Start FastAPI server
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+python app.py
 ```
 
 ### 2. Setup Frontend
@@ -135,14 +107,14 @@ Open your browser at `http://localhost:5173`.
 
 ---
 
-## 🌐 100% Free Hosting & Deployment Guide
+## 🌐 100% FREE Deployment Options (No Docker, No Credit Card Required)
 
-| Component | Free Platform | Recommended Specs |
+| Component | 100% Free Platform | Hosting Specs |
 | :--- | :--- | :--- |
-| **Frontend (React)** | **Vercel** / **Render** | 100% Free, Global CDN, Free SSL |
-| **Backend (FastAPI)** | **Hugging Face Spaces** | **16 GB RAM + 2 vCPUs FREE** (Handles PyTorch & YOLO models without RAM limits!) |
+| **Frontend (React)** | **Vercel** / **Netlify** | 100% Free, Global CDN, Free SSL |
+| **Backend (FastAPI)** | **Render.com** *(Native Python Web Service)* or **Hugging Face (Gradio SDK)** | **100% FREE CPU Basic** (No credit card or paid Docker plan needed!) |
 
-*For complete step-by-step deployment instructions, refer to [docs/deployment_hosting_guide.md](docs/deployment_hosting_guide.md).*
+*For complete step-by-step 100% free deployment instructions, refer to [docs/deployment_hosting_guide.md](docs/deployment_hosting_guide.md).*
 
 ---
 
