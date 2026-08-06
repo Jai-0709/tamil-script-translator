@@ -418,10 +418,10 @@ async def translate(
     img_hash = compute_image_hash(raw)
     image = _decode_image(raw)
     
-    # Auto-downscale stone photos (>800px) for ultra-fast 0.5s execution & 100% proxy safety
+    # Auto-downscale high-res stone photos (>1400px) for crisp YOLO & ViT character classification
     img_h, img_w = image.shape[:2]
-    if max(img_h, img_w) > 800:
-        scale = 800.0 / float(max(img_h, img_w))
+    if max(img_h, img_w) > 1400:
+        scale = 1400.0 / float(max(img_h, img_w))
         new_w = int(img_w * scale)
         new_h = int(img_h * scale)
         image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)

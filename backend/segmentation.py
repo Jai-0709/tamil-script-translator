@@ -33,8 +33,8 @@ try:
 except ImportError:
     YOLO = None
 
-# Opt-in heavy YOLO model only when ENABLE_YOLO=true (prevents 380MB RAM OOM crash on free cloud servers)
-_ENABLE_HEAVY_YOLO = os.environ.get("ENABLE_YOLO", "false").lower() in ("true", "1", "yes")
+# Enable trained YOLOv8 model segmentation by default (models/best.pt)
+_ENABLE_HEAVY_YOLO = os.environ.get("ENABLE_YOLO", "true").lower() in ("true", "1", "yes")
 
 _YOLO_MODEL = None
 _YOLO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "best.pt")
