@@ -17,12 +17,14 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
   const POPOVER_WIDTH  = 272
   const POPOVER_HEIGHT = 440
 
+  const isMobile = window.innerWidth <= 480
+
   // Horizontal clamping: keep inside viewport with 16px margin
-  const panelX = Math.max(16, Math.min(position.x, window.innerWidth - POPOVER_WIDTH - 16))
+  const panelX = isMobile ? '50%' : Math.max(16, Math.min(position.x, window.innerWidth - POPOVER_WIDTH - 16))
 
   // Vertical clamping: if click is near bottom, position ABOVE click or clamp to top margin
-  let panelY = position.y
-  if (position.y + POPOVER_HEIGHT > window.innerHeight - 20) {
+  let panelY = isMobile ? '50%' : position.y
+  if (!isMobile && position.y + POPOVER_HEIGHT > window.innerHeight - 20) {
     panelY = Math.max(16, position.y - POPOVER_HEIGHT - 10)
     if (panelY + POPOVER_HEIGHT > window.innerHeight - 16) {
       panelY = Math.max(16, window.innerHeight - POPOVER_HEIGHT - 16)
@@ -32,7 +34,7 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
   return (
     <>
       {/* Click-outside backdrop */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 999 }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 999, background: isMobile ? 'rgba(0,0,0,0.5)' : 'transparent' }} />
 
       {/* Popover panel */}
       <div
@@ -41,8 +43,10 @@ export default function CorrectionPopover({ word, position, onCorrect, onClose, 
           position: 'fixed',
           left: panelX,
           top: panelY,
+          transform: isMobile ? 'translate(-50%, -50%)' : 'none',
           zIndex: 1000,
-          width: POPOVER_WIDTH,
+          width: isMobile ? '90vw' : POPOVER_WIDTH,
+          maxWidth: 320,
           maxHeight: 'calc(100vh - 32px)',
           display: 'flex',
           flexDirection: 'column',

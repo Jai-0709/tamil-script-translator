@@ -490,6 +490,31 @@ export default function DatasetStudio({ onBack }) {
           </div>
         )}
 
+        <button 
+          onClick={() => {
+            fetch(`${BACKEND_URL}/api/dataset/stats`)
+              .then(r => r.json())
+              .then(data => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = 'tamil_inscription_dataset.json'
+                a.click()
+                URL.revokeObjectURL(url)
+                showToast('Exported Dataset JSON')
+              })
+              .catch(() => showToast('Export failed', false))
+          }}
+          style={{
+            padding: '5px 12px', fontSize: 12, fontWeight: 600,
+            background: 'var(--surface-2)', color: 'var(--copper)',
+            border: '1px solid var(--copper-border)', borderRadius: 7, cursor: 'pointer'
+          }}
+        >
+          Export Dataset JSON
+        </button>
+
         <button onClick={fetchStats} disabled={loading} className="btn-primary" style={{ padding:'5px 14px', fontSize:12 }}>
           {loading ? 'Refreshing…' : 'Refresh'}
         </button>

@@ -7,6 +7,7 @@ Endpoints:
 """
 
 import io
+import asyncio
 import traceback
 import hashlib
 import json
@@ -28,7 +29,7 @@ _BACKEND_DIR = Path(__file__).resolve().parent
 if str(_BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(_BACKEND_DIR))
 
-from segmentation import segment_words
+from segmentation import segment_words, _is_stone_crack_or_blank
 import classifier
 from nlp_engine import nlp_engine
 from gemini_engine import gemini_epigraphic_refine
@@ -43,12 +44,10 @@ try:
         except Exception:
             return text
     _AKSHA_AVAILABLE = True
-    print("[INFO] Aksharamukha loaded — Roman transliteration enabled.")
 except ImportError:
     def _to_roman(text: str) -> str:
         return text
     _AKSHA_AVAILABLE = False
-    print("[WARN] aksharamukha not installed — Roman transliteration disabled.")
 
 # Unknown class label — shown as ? in UI
 _UNKNOWN_CLASS = "அறியப்படாதது"
@@ -91,8 +90,13 @@ def load_memory():
             pass
 
 def save_memory():
-    with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(correction_memory, f, ensure_ascii=False)
+    try:
+        tmp_path = MEMORY_FILE + ".tmp"
+        with open(tmp_path, 'w', encoding='utf-8') as f:
+            json.dump(correction_memory, f, ensure_ascii=False)
+        os.replace(tmp_path, MEMORY_FILE)
+    except Exception as e:
+        print(f"Error saving memory: {e}")
 
 load_memory()
 
@@ -110,8 +114,10 @@ def load_user_boxes():
 
 def save_user_boxes():
     try:
-        with open(USER_BOXES_PATH, "w", encoding="utf-8") as f:
+        tmp_path = USER_BOXES_PATH + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(user_boxes_db, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, USER_BOXES_PATH)
     except Exception as e:
         print(f"Error saving user boxes: {e}")
 
@@ -134,7 +140,7 @@ def normalize_fname(fn: str) -> str:
 def get_user_boxes_for_image(img_hash: str, filename: str):
     """
     Looks up saved layout using MD5 Image Content Hash (100% invariant to browser filename renames)
-    with filename matching as fallback.
+    with filename matching as fallback. Ignores generic region crop names.
     """
     # 1. Match by MD5 Image Content Hash
     if img_hash and img_hash in user_boxes_db:
@@ -144,19 +150,24 @@ def get_user_boxes_for_image(img_hash: str, filename: str):
 
     if not filename:
         return []
+
+    target_norm = normalize_fname(filename)
+    # Ignore generic crop filenames so region crops never load wrong full-image layout boxes
+    if target_norm in ["cropped_region.jpg", "region_crop.jpg", "blob", "image.jpg", "image.png", "upload.jpg"]:
+        return []
+
     raw_unquoted = urllib.parse.unquote(str(filename))
     base = os.path.basename(raw_unquoted)
-    
+
     # 2. Match by exact unquoted basename
-    if base in user_boxes_db:
+    if base in user_boxes_db and base not in ["cropped_region.jpg", "region_crop.jpg"]:
         val = user_boxes_db[base]
         return val.get("boxes", val) if isinstance(val, dict) else val
-    if raw_unquoted in user_boxes_db:
+    if raw_unquoted in user_boxes_db and raw_unquoted not in ["cropped_region.jpg", "region_crop.jpg"]:
         val = user_boxes_db[raw_unquoted]
         return val.get("boxes", val) if isinstance(val, dict) else val
-        
+
     # 3. Match by normalized whitespace / case-insensitive filename
-    target_norm = normalize_fname(filename)
     for k, val in user_boxes_db.items():
         if normalize_fname(k) == target_norm:
             return val.get("boxes", val) if isinstance(val, dict) else val
@@ -167,6 +178,60 @@ def cosine_similarity(v1, v2):
     v1 = np.array(v1)
     v2 = np.array(v2)
     return float(np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-9))
+
+
+def apply_ugsm_auto_segmentation(model_regions: List[Dict], image: np.ndarray) -> List[Dict]:
+    """
+    Universal Glyph Segmentation Memory (UGSM) Engine:
+    Examines detected character regions against global learned character vector memory (correction_memory).
+    - Auto-Merges over-segmented adjacent boxes if combined crop matches a learned character vector.
+    """
+    if not model_regions or not correction_memory:
+        return model_regions
+
+    img_h, img_w = image.shape[:2]
+    result_regions = []
+    i = 0
+    while i < len(model_regions):
+        curr = model_regions[i]
+        
+        # Check auto-merge with next adjacent box if on same line
+        merged = False
+        if i + 1 < len(model_regions):
+            nxt = model_regions[i + 1]
+            if curr.get("line", 1) == nxt.get("line", 1):
+                mx = min(curr["x"], nxt["x"])
+                my = min(curr["y"], nxt["y"])
+                mw = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"]) - mx
+                mh = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"]) - my
+                
+                mcrop = image[my:min(img_h, my+mh), mx:min(img_w, mx+mw)]
+                if mcrop.size > 0:
+                    mfeat = classifier.extract_features(mcrop)
+                    if mfeat is not None:
+                        for mem in reversed(correction_memory):
+                            sim = cosine_similarity(mfeat, mem["vector"])
+                            if sim >= 0.88 and mem["modern_tamil"] != "__IGNORE__":
+                                print(f"[UGSM] Auto-merged over-segmented boxes {curr['id']}+{nxt['id']} → '{mem['modern_tamil']}' (sim={sim:.2f})")
+                                result_regions.append({
+                                    "id": curr["id"],
+                                    "x": mx, "y": my, "w": mw, "h": mh,
+                                    "line": curr.get("line", 1),
+                                    "saved_tamil": mem["modern_tamil"],
+                                    "crop": mcrop
+                                })
+                                i += 2
+                                merged = True
+                                break
+        if not merged:
+            cx, cy, cw, ch = curr["x"], curr["y"], curr["w"], curr["h"]
+            crop = image[cy:min(img_h, cy+ch), cx:min(img_w, cx+cw)]
+            if crop.size > 0:
+                curr["crop"] = crop
+                result_regions.append(curr)
+            i += 1
+
+    return result_regions
 
 
 # Pre-warm the model at startup so the first request is not slow
@@ -302,66 +367,80 @@ async def translate(
     # ── 2. Segment ──────────────────────────────────────────────────────
     import json
     try:
-        if custom_boxes_json:
-            custom_boxes = json.loads(custom_boxes_json)
-            regions = []
-            for i, box in enumerate(custom_boxes):
-                x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
-                crop = image[y:y+h, x:x+w]
-                regions.append({
-                    "x": x, "y": y, "w": w, "h": h, 
-                    "line": box.get("line", 1), 
-                    "id": i + 1, 
-                    "crop": crop
-                })
-        else:
-            regions = segment_words(image, mode=mode, merge_gap_x=merge_gap)
-
-        # Load persistent user-saved custom segmentation layout for this image if available
         fname = getattr(file, "filename", None)
         saved_boxes = get_user_boxes_for_image(img_hash, fname)
-        
-        # Determine if saved_boxes were created from a region crop (cover only a partial top/region of full image)
-        is_saved_from_crop = False
-        if saved_boxes and img_h > 0:
-            max_y = max(int(b.get("y", 0)) + int(b.get("h", 0)) for b in saved_boxes)
-            if max_y < 0.5 * img_h and len(saved_boxes) < 25:
-                is_saved_from_crop = True
 
-        print(f"[TRANSLATE] file='{fname}', hash='{img_hash[:8]}...', is_region={is_region_active}, saved_boxes={len(saved_boxes) if saved_boxes else 0}, is_saved_crop={is_saved_from_crop}")
-
-        # Apply saved layout memory ONLY when appropriate (never override full-image YOLO with a partial crop layout)
-        should_apply_saved_layout = False
-        if saved_boxes and not custom_boxes_json:
-            if is_region_active:
-                should_apply_saved_layout = True
-            elif not is_saved_from_crop:
-                should_apply_saved_layout = True
-
-        if should_apply_saved_layout:
-            print(f"[TRANSLATE] Successfully applied {len(saved_boxes)} saved memory boxes for {fname}")
-            # Ensure saved boxes are strictly ordered left-to-right by (line, x)
-            saved_boxes_sorted = sorted(saved_boxes, key=lambda b: (b.get("line", 1), b.get("x", 0)))
-            regions = []
-            for i, sb in enumerate(saved_boxes_sorted):
-                sx = max(0, int(sb["x"]))
-                sy = max(0, int(sb["y"]))
-                sw = int(sb["w"])
-                sh = int(sb["h"])
-                raw_c = str(sb.get("modern_tamil", "")).strip()
-                clean_c = raw_c.split(',')[0].strip() if ',' in raw_c else raw_c
-                
-                crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
+        if custom_boxes_json:
+            custom_boxes = json.loads(custom_boxes_json)
+            raw_regions = []
+            for i, box in enumerate(custom_boxes):
+                x, y, w, h = int(box["x"]), int(box["y"]), int(box["w"]), int(box["h"])
+                crop = image[y:min(img_h, y+h), x:min(img_w, x+w)]
                 if crop.size > 0:
-                    regions.append({
-                        "id": i + 1,
-                        "_id": i + 1,
-                        "x": sx, "y": sy, "w": sw, "h": sh,
-                        "line": sb.get("line", 1),
-                        "saved_tamil": clean_c if clean_c and clean_c != "?" else None,
-                        "crop": crop
+                    raw_regions.append({
+                        "x": x, "y": y, "w": w, "h": h, 
+                        "line": box.get("line", 1), 
+                        "id": i + 1, 
+                        "crop": crop,
+                        "saved_tamil": box.get("modern_tamil")
                     })
-            regions.sort(key=lambda r: (r["line"], r["x"]))
+            regions = raw_regions
+        else:
+            # Fresh AI model segmentation is ALWAYS executed as base
+            model_regions = await asyncio.to_thread(segment_words, image, mode, merge_gap)
+            # Universal Glyph Segmentation Memory (UGSM) Auto-Merge/Split
+            model_regions = apply_ugsm_auto_segmentation(model_regions, image)
+            
+            # Character-level delta overlay: If user saved custom boxes for this full image, overlay ONLY matching user character edits
+            if saved_boxes and not is_region_active:
+                print(f"[TRANSLATE] Merging {len(saved_boxes)} user character box deltas onto fresh model segmentation...")
+                merged_list = []
+                for fr in model_regions:
+                    fx, fy, fw, fh = fr["x"], fr["y"], fr["w"], fr["h"]
+                    # Check if user edited this character box
+                    best_match = None
+                    best_iou = 0.0
+                    for sb in saved_boxes:
+                        sx, sy, sw, sh = int(sb["x"]), int(sb["y"]), int(sb["w"]), int(sb["h"])
+                        ix1, iy1 = max(fx, sx), max(fy, sy)
+                        ix2, iy2 = min(fx + fw, sx + sw), min(fy + fh, sy + sh)
+                        if ix1 < ix2 and iy1 < iy2:
+                            inter = (ix2 - ix1) * (iy2 - iy1)
+                            union = (fw * fh) + (sw * sh) - inter
+                            iou = inter / max(1.0, union)
+                            if iou > best_iou:
+                                best_iou = iou
+                                best_match = sb
+                                
+                    if best_match and best_iou > 0.35:
+                        sx, sy, sw, sh = int(best_match["x"]), int(best_match["y"]), int(best_match["w"]), int(best_match["h"])
+                        raw_c = str(best_match.get("modern_tamil", "")).strip()
+                        clean_c = raw_c.split(',')[0].strip() if ',' in raw_c else raw_c
+                        crop = image[sy:min(img_h, sy+sh), sx:min(img_w, sx+sw)]
+                        if crop.size > 0:
+                            merged_list.append({
+                                "id": fr["id"], "x": sx, "y": sy, "w": sw, "h": sh,
+                                "line": best_match.get("line", fr.get("line", 1)),
+                                "saved_tamil": clean_c if clean_c and clean_c != "?" else None,
+                                "crop": crop
+                            })
+                    else:
+                        crop = image[fy:min(img_h, fy+fh), fx:min(img_w, fx+fw)]
+                        if crop.size > 0:
+                            fr["crop"] = crop
+                            merged_list.append(fr)
+                            
+                regions = merged_list
+            else:
+                regions = []
+                for fr in model_regions:
+                    fx, fy, fw, fh = fr["x"], fr["y"], fr["w"], fr["h"]
+                    crop = image[fy:min(img_h, fy+fh), fx:min(img_w, fx+fw)]
+                    if crop.size > 0:
+                        fr["crop"] = crop
+                        regions.append(fr)
+                        
+            regions.sort(key=lambda r: (r.get("line", 1), r["x"]))
             for i, r in enumerate(regions):
                 r["_id"] = i + 1
     except Exception:
@@ -421,10 +500,6 @@ async def translate(
                 results[i]["memorized_options"] = matching_chars
                 results[i]["ai_original_tamil"] = results[i]["modern_tamil"] # Save the AI's original guess
                 results[i]["modern_tamil"] = best_mem_char # Default to best memorized match
-                results[i]["is_memorized"] = True
-            else:
-                results[i]["is_memorized"] = False
-
         # Filter out user-ignored memory boxes and extreme noise (confidence >= 0.02)
         valid_indices = [
             i for i in range(len(regions))
@@ -505,8 +580,11 @@ async def translate(
         
         best_path = top_k_paths[0] if top_k_paths else []
         for seq_idx, i in enumerate(indices):
-            if best_path and seq_idx < len(best_path):
-                results[i]["modern_tamil"] = best_path[seq_idx]
+            # Only allow NLP Beam Search to override modern_tamil if classifier confidence is low (< 50%)
+            # and the box is NOT user-memorized or high-confidence (preserves true predictions like 'ன்' 90%)
+            if results[i].get("confidence", 0.0) < 0.50 and not results[i].get("is_memorized"):
+                if best_path and seq_idx < len(best_path):
+                    results[i]["modern_tamil"] = best_path[seq_idx]
             else:
                 raw_c = str(results[i]["modern_tamil"])
                 results[i]["modern_tamil"] = raw_c.split(',')[0].strip()
@@ -608,14 +686,17 @@ async def translate(
 class RefineRequest(BaseModel):
     raw_characters: List[str]
     alternative_sentences: Optional[List[str]] = []
+    line_groups: Optional[List[Dict]] = []
 
 
 class RefineResponse(BaseModel):
     ai_refined_sentence: str
+    modern_tamil_sentence: Optional[str] = ""
     english_translation: Optional[str] = ""
     ai_meaning: Optional[str] = None
     english_meaning: Optional[str] = None
     ai_word_breakdown: Optional[List[Dict]] = None
+    line_breakdown: Optional[List[Dict]] = []
     alternative_sentences: List[str] = []
     roman_sentence: str = ""
 
@@ -624,27 +705,30 @@ class RefineResponse(BaseModel):
 async def refine_ai_endpoint(req: RefineRequest):
     """
     On-demand endpoint triggered when the user clicks '✨ Refine & Analyze with AI'.
-    Analyzes raw characters and top 50 Beam Search variations to produce word-segmented modern Tamil
-    plus word-by-word meaning breakdown.
+    Analyzes raw characters and line groups to produce structured per-line epigraphic translations.
     """
-    res = gemini_epigraphic_refine(req.raw_characters, req.alternative_sentences)
+    res = gemini_epigraphic_refine(req.raw_characters, req.alternative_sentences, req.line_groups)
     if not res or "full_sentence" not in res:
         raise HTTPException(status_code=500, detail="AI Refinement unavailable or failed.")
         
     refined_sentence = res["full_sentence"]
+    modern_sentence = res.get("modern_tamil_sentence", refined_sentence)
     eng_trans = res.get("english_translation", "")
     meaning = res.get("meaning", "")
     eng_meaning = res.get("english_meaning", "")
     breakdown = res.get("word_breakdown", [])
+    line_breakdown = res.get("line_breakdown", [])
     alts = res.get("alternative_readings", [])[:10]
     roman = _to_roman(refined_sentence)
     
     return RefineResponse(
         ai_refined_sentence=refined_sentence,
+        modern_tamil_sentence=modern_sentence,
         english_translation=eng_trans,
         ai_meaning=meaning,
         english_meaning=eng_meaning,
         ai_word_breakdown=breakdown,
+        line_breakdown=line_breakdown,
         alternative_sentences=alts,
         roman_sentence=roman
     )
@@ -848,13 +932,33 @@ def delete_layout_memory(req: DeleteLayoutRequest):
             return {"status": "ok", "deleted": k}
     return {"status": "not_found"}
 
+@app.post("/api/clear-segmentation-memory")
+@app.post("/api/clear-layout-memory")
+def clear_layout_memory_all():
+    global user_boxes_db
+    count = len(user_boxes_db)
+    user_boxes_db = {}
+    save_user_boxes()
+    return {"status": "ok", "message": f"Cleared {count} saved segmentation & layout memories"}
+
 @app.post("/api/clear-vector-memory")
-@app.post("/api/clear-all-memory")
-def clear_all_memory():
+def clear_vector_memory_all():
     global correction_memory
+    count = len(correction_memory)
     correction_memory = []
     save_memory()
-    return {"status": "ok", "message": "All character vector memories cleared"}
+    return {"status": "ok", "message": f"Cleared {count} character vector memories"}
+
+@app.post("/api/clear-all-memory")
+def clear_all_memory():
+    global correction_memory, user_boxes_db
+    v_count = len(correction_memory)
+    l_count = len(user_boxes_db)
+    correction_memory = []
+    user_boxes_db = {}
+    save_memory()
+    save_user_boxes()
+    return {"status": "ok", "message": f"Cleared {v_count} vector memories and {l_count} layout memories"}
 
 
 @app.post("/segment-only", response_model=SegmentResponse)

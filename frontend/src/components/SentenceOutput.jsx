@@ -4,10 +4,12 @@ export default function SentenceOutput({
   fullSentence,
   rawSentence,
   aiRefinedSentence,
+  modernTamilSentence,
   englishTranslation,
   aiMeaning,
   englishMeaning,
   aiWordBreakdown = [],
+  aiLineBreakdown = [],
   alternativeSentences = [],
   onRefineAI,
   onSync,
@@ -34,7 +36,7 @@ export default function SentenceOutput({
   function copyAllAlternatives() {
     if (!alternativeSentences.length) return
     const txt = alternativeSentences
-      .slice(0, 10)
+      .slice(0, 20)
       .map((alt, i) => `${i + 1}. ${alt}`)
       .join('\n')
     navigator.clipboard.writeText(txt).then(() => {
@@ -84,36 +86,7 @@ export default function SentenceOutput({
             </span>
           </button>
 
-          {/* Language Translation Tabs */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 2,
-            background: 'var(--surface-3)', border: '1px solid var(--line)',
-            borderRadius: 'var(--r-sm)', padding: 2,
-          }}>
-            {[
-              ['all', 'All (Bilingual)'],
-              ['tamil', 'Tamil (தமிழ்)'],
-              ['english', 'English'],
-            ].map(([k, label]) => (
-              <button
-                key={k}
-                onClick={() => setLangTab(k)}
-                style={{
-                  background: langTab === k ? 'var(--surface-1)' : 'transparent',
-                  border: 'none',
-                  borderRadius: 4,
-                  padding: '3px 8px',
-                  fontSize: 11,
-                  fontWeight: langTab === k ? 700 : 500,
-                  color: langTab === k ? 'var(--copper-light)' : 'var(--fg-3)',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -143,11 +116,11 @@ export default function SentenceOutput({
         <div style={{ padding: 16 }}>
 
           {/* ── 2-Column Standalone Feature Panels: Left (Model Translation) | Right (AI Translation) ── */}
-          <div style={{
+          <div className="sentence-output-grid" style={{
             display: 'grid',
             gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)',
             gap: 16,
-            alignItems: 'stretch',
+            alignItems: 'start',
             width: '100%',
           }}>
 
@@ -203,7 +176,7 @@ export default function SentenceOutput({
                     marginBottom: 10, flexWrap: 'wrap', gap: 6,
                   }}>
                     <span className="label" style={{ color: 'var(--fg-4)' }}>
-                      Alternative Readings · {Math.min(alternativeSentences.length, 10)}
+                      Alternative Readings · {Math.min(alternativeSentences.length, 20)}
                     </span>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       {onSync && (
@@ -233,7 +206,7 @@ export default function SentenceOutput({
                     maxHeight: 260,
                     overflowY: 'auto',
                   }}>
-                    {alternativeSentences.slice(0, 10).map((altText, idx) => (
+                    {alternativeSentences.slice(0, 20).map((altText, idx) => (
                       <div
                         key={idx}
                         onClick={() => navigator.clipboard.writeText(altText)}
@@ -279,6 +252,10 @@ export default function SentenceOutput({
               flexDirection: 'column',
               gap: 16,
               boxSizing: 'border-box',
+              maxHeight: '680px',
+              overflowY: 'auto',
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'var(--copper) var(--surface-3)',
             }}>
 
               {/* Header */}
@@ -298,48 +275,184 @@ export default function SentenceOutput({
                     Gemini
                   </span>
                 </div>
-                {aiText && (
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <button
-                    className="btn-ghost"
-                    onClick={() => copy(aiText, setCopiedAi)}
-                    style={{ fontSize: 11, color: copiedAi ? '#3da35d' : undefined }}
+                    className="btn-secondary"
+                    onClick={onRefineAI}
+                    disabled={isRefiningAI}
+                    style={{
+                      fontSize: 11,
+                      padding: '4px 10px',
+                      color: 'var(--copper)',
+                      borderColor: 'var(--copper-border)',
+                      background: 'var(--surface-3)',
+                      cursor: 'pointer',
+                    }}
+                    title="Re-run Gemini AI refinement on current updated characters"
                   >
-                    {copiedAi ? 'Copied' : 'Copy'}
+                    {isRefiningAI ? 'Refining…' : aiText ? 'Re-Refine with AI' : 'Refine with AI'}
                   </button>
-                )}
+
+                  {aiText && (
+                    <button
+                      className="btn-ghost"
+                      onClick={() => copy(aiText, setCopiedAi)}
+                      style={{ fontSize: 11, color: copiedAi ? '#3da35d' : undefined }}
+                    >
+                      {copiedAi ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {aiText ? (
                 <>
-                  {/* Feature 1: Refined Sentence & English Translation (Symmetrical Professional Layout) */}
+                  {/* Structured Per-Line Epigraphic Translation Cards */}
                   <div style={{
-                    padding: '12px 14px',
+                    padding: '14px 16px',
                     background: 'var(--surface-3)',
                     borderRadius: 'var(--r-sm)',
                     border: '1px solid var(--copper-border)',
-                    display: 'flex', flexDirection: 'column', gap: 10,
+                    display: 'flex', flexDirection: 'column', gap: 14,
                   }}>
                     {(langTab === 'all' || langTab === 'tamil') && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-                            Tamil Transcription
-                          </span>
-                        </div>
-                        <p className="tamil" style={{
-                          fontSize: 22, fontWeight: 600, color: 'var(--copper-light)',
-                          lineHeight: 1.45, wordBreak: 'break-word', margin: 0,
-                        }}>
-                          {aiText}
-                        </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {aiLineBreakdown && aiLineBreakdown.length > 0 ? (
+                          aiLineBreakdown.map((item, idx) => (
+                            <div key={idx} style={{
+                              padding: '14px 16px',
+                              background: 'rgba(217, 119, 6, 0.06)',
+                              border: '1px solid rgba(217, 119, 6, 0.25)',
+                              borderRadius: 6,
+                              display: 'flex', flexDirection: 'column', gap: 12,
+                            }}>
+                              {/* Line Badge */}
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 800, color: 'var(--copper)',
+                                  background: 'rgba(217, 119, 6, 0.18)', border: '1px solid rgba(217, 119, 6, 0.35)',
+                                  padding: '3px 10px', borderRadius: 4, letterSpacing: '0.08em', textTransform: 'uppercase'
+                                }}>
+                                  LINE {item.line_num || idx + 1} (வரி {item.line_num || idx + 1})
+                                </span>
+                              </div>
+
+                              {/* Epigraphic Inscription Reading */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                  Inscription Reading (பண்டைய கல்வெட்டுப் பாடம்)
+                                </span>
+                                <p className="tamil" style={{ fontSize: 20, fontWeight: 600, color: 'var(--copper-light)', margin: 0, lineHeight: 1.45 }}>
+                                  {item.epigraphic_text}
+                                </p>
+                              </div>
+
+                              {/* Modern Tamil Explanation */}
+                              {item.modern_meaning && (langTab === 'all' || langTab === 'tamil') && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Modern Tamil Explanation (தற்காலத் தமிழ் விளக்கம்)
+                                  </span>
+                                  <p className="tamil" style={{ fontSize: 16, fontWeight: 500, color: '#4ade80', margin: 0, lineHeight: 1.45 }}>
+                                    {item.modern_meaning}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* English Translation */}
+                              {item.english_translation && (langTab === 'all' || langTab === 'english') && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    English Translation
+                                  </span>
+                                  <p style={{ fontSize: 14, fontWeight: 500, color: 'var(--fg-2)', margin: 0, lineHeight: 1.45 }}>
+                                    {item.english_translation}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Historical Context & Epigraphic Meaning for this line */}
+                              {item.historical_note && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 8, borderTop: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Historical Context & Epigraphic Meaning (வரலாற்று விளக்கம்)
+                                  </span>
+                                  <p style={{ fontSize: 13, color: 'var(--fg-2)', margin: 0, lineHeight: 1.45 }}>
+                                    {item.historical_note}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Word Analysis specifically for this line */}
+                              {item.word_breakdown && item.word_breakdown.length > 0 && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, paddingTop: 8, borderTop: '1px dashed rgba(217, 119, 6, 0.2)' }}>
+                                  <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--fg-3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                    Word Analysis (சொற்பிரிப்பு & பொருள்) · {item.word_breakdown.length} items
+                                  </span>
+                                  <div style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                    gap: 8
+                                  }}>
+                                    {item.word_breakdown.map((w, wIdx) => (
+                                      <div key={wIdx} style={{
+                                        padding: '8px 10px',
+                                        background: 'var(--surface-2)',
+                                        border: '1px solid var(--line)',
+                                        borderRadius: 6,
+                                        display: 'flex', flexDirection: 'column', gap: 3
+                                      }}>
+                                        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--fg)' }}>
+                                          {w.word}
+                                        </div>
+                                        {w.meaning && (
+                                          <div style={{ fontSize: 12, color: '#4ade80' }}>
+                                            <strong style={{ color: 'var(--copper)' }}>TA</strong> {w.meaning}
+                                          </div>
+                                        )}
+                                        {w.english_meaning && (
+                                          <div style={{ fontSize: 11, color: 'var(--fg-3)' }}>
+                                            <strong style={{ color: 'var(--copper)' }}>EN</strong> {w.english_meaning}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{
+                            padding: '12px 14px',
+                            background: 'rgba(217, 119, 6, 0.08)',
+                            border: '1px solid rgba(217, 119, 6, 0.3)',
+                            borderRadius: 6,
+                            display: 'flex', flexDirection: 'column', gap: 6,
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                                Epigraphic Tamil Text (கல்வெட்டுப் பாடம் & உரை)
+                              </span>
+                            </div>
+                            <div className="tamil" style={{
+                              fontSize: 21, fontWeight: 600, color: 'var(--copper-light)',
+                              lineHeight: 1.5, wordBreak: 'break-word', margin: 0,
+                              whiteSpace: 'pre-line',
+                            }}>
+                              {aiText}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {(langTab === 'all' || langTab === 'english') && englishTranslation && (
+                    {(langTab === 'all' || langTab === 'english') && englishTranslation && (!aiLineBreakdown || aiLineBreakdown.length === 0) && (
                       <div style={{
                         display: 'flex', flexDirection: 'column', gap: 4,
-                        borderTop: langTab === 'all' && (langTab === 'all' || langTab === 'tamil') ? '1px solid var(--copper-border)' : 'none',
-                        paddingTop: langTab === 'all' && (langTab === 'all' || langTab === 'tamil') ? 8 : 0,
+                        borderTop: '1px solid var(--copper-border)',
+                        paddingTop: 8,
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--copper)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>

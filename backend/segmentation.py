@@ -630,16 +630,8 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
 def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int = 4) -> List[Dict]:
     """
     Segment an inscription image into character-level bounding boxes.
-
-    Args:
-        image_bgr: BGR numpy array (uint8).
-        mode: "smart" (YOLO hybrid) or "classic" (OpenCV only).
-        merge_gap_x: Max horizontal gap (in px) to auto-merge split YOLO boxes.
-
-    Returns:
-        List of dicts with: id, x, y, w, h, line, crop
+    Supports Option 3 Automatic Multi-Strip Assembly for ultra-wide crops.
     """
-    # -- Input normalisation ----------------------------------------------------
     if image_bgr is None or image_bgr.size == 0:
         return []
     if len(image_bgr.shape) == 3 and image_bgr.shape[2] == 4:
@@ -647,16 +639,87 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     if len(image_bgr.shape) == 2:
         image_bgr = cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
 
+    orig_h, orig_w = image_bgr.shape[:2]
+
+    # Option 3: Automatic Multi-Strip Assembly Engine for Wide Inscription Images
+    # Triggers whenever aspect ratio > 3.0 or width > 1000px
+    if orig_w > 1000 and (orig_w / float(max(1, orig_h))) > 3.0:
+        print(f"[SEG-STRIP] Wide image detected ({orig_w}x{orig_h}, aspect={orig_w/max(1,orig_h):.2f}). Running Option 3 Multi-Strip Assembly Engine...")
+        strip_width = min(1100, max(600, int(orig_h * 4.2)))
+        overlap_w = int(strip_width * 0.40)
+        step_w = max(100, strip_width - overlap_w)
+        
+        all_strip_regions = []
+        for x_start in range(0, orig_w, step_w):
+            x_end = min(orig_w, x_start + strip_width)
+            if (x_end - x_start) < int(orig_h * 1.2) and x_start > 0:
+                break
+                
+            sub_strip = image_bgr[:, x_start:x_end]
+            sub_regions = _segment_words_core(sub_strip, mode=mode, merge_gap_x=merge_gap_x)
+            
+            for r in sub_regions:
+                r_copy = dict(r)
+                r_copy["x"] += x_start
+                all_strip_regions.append(r_copy)
+                
+            if x_end >= orig_w:
+                break
+                
+        # Remap IDs & Merge overlapping character regions using Spatial IoU NMS
+        merged_strip_regions = []
+        all_strip_regions.sort(key=lambda r: r["x"])
+        for r in all_strip_regions:
+            rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+            duplicate = False
+            for kept in merged_strip_regions:
+                kx, ky, kw, kh = kept["x"], kept["y"], kept["w"], kept["h"]
+                ix1, iy1 = max(rx, kx), max(ry, ky)
+                ix2, iy2 = min(rx + rw, kx + kw), min(ry + rh, ky + kh)
+                if ix1 < ix2 and iy1 < iy2:
+                    inter = (ix2 - ix1) * (iy2 - iy1)
+                    min_area = min(rw * rh, kw * kh)
+                    if inter > 0.50 * min_area:
+                        duplicate = True
+                        break
+            if not duplicate:
+                merged_strip_regions.append(r)
+                
+        # Re-assign sequential IDs
+        for idx, r in enumerate(merged_strip_regions):
+            r["id"] = idx + 1
+            
+        print(f"[SEG-STRIP] Stitched {len(merged_strip_regions)} clean character regions across multi-strip assembly.")
+        return merged_strip_regions
+    else:
+        return _segment_words_core(image_bgr, mode=mode, merge_gap_x=merge_gap_x)
+
+
+def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int = 4) -> List[Dict]:
     orig      = image_bgr
     orig_h, orig_w = orig.shape[:2]
     print(f"[SEG] Input: {orig_w}×{orig_h}")
 
-    # -- STEP 1: Resize to working resolution ----------------------------------
-    MAX_W = 1800
-    work  = _resize_to_max(orig, MAX_W)
-    work_h, work_w = work.shape[:2]
-    sx = orig_w / work_w
-    sy = orig_h / work_h
+    # -- STEP 1: Uniform High-Resolution Height Scaling -----------------------
+    # Guarantee working image line height is ALWAYS >= 450px so characters are
+    # crisp, high-resolution (~220px tall), with clear separation gaps between letters!
+    MIN_WORK_H = 450
+    if orig_h < MIN_WORK_H:
+        scale_up = MIN_WORK_H / float(max(1, orig_h))
+        work_h = MIN_WORK_H
+        work_w = int(orig_w * scale_up)
+        if work_w > 2800:
+            scale_down = 2800.0 / work_w
+            work_w = 2800
+            work_h = int(work_h * scale_down)
+        work = cv2.resize(orig, (work_w, work_h), interpolation=cv2.INTER_CUBIC)
+    else:
+        MAX_W = 2000
+        work = _resize_to_max(orig, MAX_W)
+        work_h, work_w = work.shape[:2]
+
+    sx = orig_w / float(work_w)
+    sy = orig_h / float(work_h)
     _save_debug("01_resized.jpg", work)
 
     # -- STEP 2: Grayscale -----------------------------------------------------
@@ -676,15 +739,21 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
     if mode == "smart" and _YOLO_MODEL is not None:
         print("[SEG] Running SMART HYBRID mode (YOLO Tiled Inference)")
         
-        TILE_SIZE = 1280
-        OVERLAP = 640 # 50% overlap guarantees no character gets cut in half at a seam!
         h, w = image_bgr.shape[:2]
         yolo_boxes = []
-        
         yolo_scores = []
         
+        TILE_SIZE = 1280
+        # For wide horizontal crops, use dense 75% overlap (OVERLAP = 960px, STEP = 320px)
+        # so every single character appears near the center of at least 3 separate tiles!
+        if w > 1600 or (w / max(1, h)) > 4.0:
+            OVERLAP = 960
+            print(f"[SEG] Wide crop detected ({w}x{h}). Using Dense 75% Sliding Window (OVERLAP=960px, STEP=320px)...")
+        else:
+            OVERLAP = 640
+
         # Sliced Inference (just like training data!)
-        print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles...")
+        print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles with {OVERLAP}px overlap...")
         for y in range(0, max(1, h), max(1, TILE_SIZE - OVERLAP)):
             for x in range(0, max(1, w), max(1, TILE_SIZE - OVERLAP)):
                 y2 = min(y + TILE_SIZE, h)
@@ -696,14 +765,12 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                     continue
                     
                 tile = image_bgr[y1:y2, x1:x2]
-                # Maximum sensitivity: conf=0.04, augment=True (TTA), iou=0.55
                 results = _YOLO_MODEL(tile, conf=0.04, iou=0.55, augment=True, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
                 for i in range(len(boxes)):
                     box = boxes[i]
-                    # Translate to original full-image coordinates (format: x, y, w, h for NMS)
                     bx = int(box[0] + x1)
                     by = int(box[1] + y1)
                     bw = int(box[2] - box[0])
@@ -847,34 +914,7 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
                 char_w_est = max(15, work_w // 30)
                 char_h_est = max(15, work_h // 10)
             
-            # Automatic Projection Profile Compound Box Splitting:
-            # Splits wide multi-word compound boxes (rw > 1.85 * char_w_est or asp > 1.45)
-            # ONLY when a genuine vertical background ink gap exists between the characters.
-            split_regions = []
-            for r in regions:
-                rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
-                asp = rw / rh if rh > 0 else 1.0
-                if (rw > int(char_w_est * 1.85) and asp > 1.45) and rw > 35:
-                    crop = gray[ry:ry+rh, rx:rx+rw]
-                    if crop.size > 0:
-                        v_proj = np.sum(crop < 180, axis=0)
-                        mid_start = int(rw * 0.25)
-                        mid_end = int(rw * 0.75)
-                        if mid_end > mid_start:
-                            min_val = np.min(v_proj[mid_start:mid_end])
-                            mean_val = np.mean(v_proj)
-                            # Verifies a physical background gap exists between characters (prevents splitting single letters like ம/வ)
-                            if min_val < (mean_val * 0.58):
-                                min_idx = mid_start + int(np.argmin(v_proj[mid_start:mid_end]))
-                                if min_idx > 8 and (rw - min_idx) > 8:
-                                    b1 = {"x": rx, "y": ry, "w": min_idx, "h": rh, "line": r.get("line", 1)}
-                                    b2 = {"x": rx + min_idx, "y": ry, "w": rw - min_idx, "h": rh, "line": r.get("line", 1)}
-                                    split_regions.append(b1)
-                                    split_regions.append(b2)
-                                    print(f"[SEG] Auto-split wide compound box w={rw} into w1={min_idx}, w2={rw-min_idx}")
-                                    continue
-                split_regions.append(r)
-            regions = split_regions
+            pass
 
 
 

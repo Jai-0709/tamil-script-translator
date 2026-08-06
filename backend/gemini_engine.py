@@ -35,14 +35,10 @@ def is_gemini_enabled() -> bool:
     return len(get_gemini_api_key()) > 5
 
 
-def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional[List[str]] = None) -> Optional[Dict]:
+def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional[List[str]] = None, line_groups: Optional[List[Dict]] = None) -> Optional[Dict]:
     """
     Calls Google Gemini API (Free Tier) to perform state-of-the-art word segmentation (சொற்பிரிப்பு),
-    punctuation restoration, ancient Tamil epigraphic translation, and word-by-word meaning breakdown.
-
-    Returns:
-        Dict with keys: full_sentence, word_breakdown, alternative_readings, meaning
-        Or None if Gemini is disabled/failed.
+    punctuation restoration, ancient Tamil epigraphic translation, and structured line-by-line breakdown.
     """
     key = get_gemini_api_key()
     if not key:
@@ -64,43 +60,63 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
     if not raw_text:
         return None
 
+    line_context_str = ""
+    num_detected_lines = 1
+    if line_groups and len(line_groups) > 0:
+        num_detected_lines = len(line_groups)
+        lines_formatted = []
+        for lg in line_groups:
+            l_num = lg.get("line", 1)
+            l_txt = lg.get("text", "").strip()
+            lines_formatted.append(f"Line {l_num}: \"{l_txt}\"")
+        line_context_str = f"\nThe detected stone inscription contains EXACTLY {num_detected_lines} physical lines:\n" + "\n".join(lines_formatted) + "\n"
+
     variations_str = ""
     if top_variations and len(top_variations) > 0:
-        variations_str = "\nTop NLP Beam Search Variations:\n" + "\n".join([f"- {v}" for v in top_variations[:50]])
+        variations_str = "\nCandidate Permutation & Combination Variations:\n" + "\n".join([f"- {v}" for v in top_variations[:50]])
 
     system_prompt = (
-        "You are a precise Ancient Tamil Epigraphist and Epigraphic Computational Linguistics AI.\n"
-        "Your primary task is to take a raw sequence of ancient Tamil characters extracted from stone inscriptions (கல்வெட்டுகள்), "
-        "perform accurate word segmentation (சொற்பிரிப்பு), insert missing pulli (dots), and fix minor character typos or missing letters STRICTLY WITHIN THE GIVEN INPUT SEQUENCE.\n\n"
-        "STRICT CHARACTER & WORD BOUNDARY RULES:\n"
-        "1. DO NOT INVENT OR APPEND EXTRA UNRELATED WORDS OR FULL ROYAL TITLES. Only refine the words present in the given input characters. "
-        "For example, if the input characters form a single word or short phrase (e.g. 'உடை யா'), your output MUST contain ONLY that single word (e.g. 'உடையார்'). "
-        "DO NOT extrapolate or hallucinate un-cropped external words (such as 'ஸ்ரீ ராஜராஜ தேவர்') that are not present in the input sequence.\n"
-        "2. IN-SEQUENCE RESTORATION ONLY: You may only restore a missing letter or word IF it is clearly missing in the middle of the provided sequence or completing a broken word within the input bounds.\n"
-        "3. BILINGUAL ENGLISH & TAMIL OUTPUT: Provide clean modern Tamil AND fluent English translation for the refined sentence, the historical meaning, and every word breakdown item.\n\n"
-        "Return output strictly as a JSON object matching this schema:\n"
+        "You are an Elite Epigraphist and Epigraphic Computational Linguistics AI specializing in Chola, Pandya, and Pallava stone inscriptions (கல்வெட்டுகள்).\n"
+        "Your primary objective is to decode OCR visual/grammatical errors and reconstruct the single accurate ancient Tamil inscriptional reading.\n\n"
+        "CRITICAL EPIGRAPHIC LINGUISTIC & MEASUREMENT CONSERVATION RULES:\n"
+        "1. EPIGRAPHIC WORD SPACING (ALWAYS ADD CLEAN SPACES BETWEEN WORDS):\n"
+        "   - Ancient stone inscriptions often lacked word spaces. In 'epigraphic_text', YOU MUST ALWAYS INSERT CLEAN SPACES BETWEEN INDIVIDUAL ANCIENT WORDS while preserving ancient spelling (e.g. return 'காலசோமனையும் பாண்டியாகளையும்' and 'செய்து குடுத்த திருப்பட்டம் ஒன்று பொன்', NOT concatenated strings like 'காலசோமனையும்பாண்டியாகளையும்')!\n"
+        "2. EPIGRAPHIC GOLD WEIGHT & MEASUREMENT ACCURACY (NEVER ERASE OR CONVERT):\n"
+        "   - Inscriptions frequently record gold weights, land sizes, and temple donations using terms like 'கழஞ்சு' (kalanju), 'கழஞ்சரை' (kalanju-half), 'மஞ்சாடி' (manjadi), 'நாழி' (naazhi), 'காசு' (kasu).\n"
+        "   - E.g. 'இ ரு ப த ங் க ழ ஞ் ச ரை' MUST BE DECODED AS GOLD WEIGHT MEASURE 'இருபத்தைந்தரை கழஞ்சு' (25.5 Kalanju Gold Weight)! DO NOT mistake 'கழஞ்சரை' as 'ஆண்டு' or 'ஆட்சியான்டு'!\n"
+        "   - E.g. 'யா ண் டு இ ரு ப த' = 'ஆண்டு இருபதாவது' (20th Regnal Year). Keep regnal years and gold weights distinct!\n"
+        "3. EXACT LINE COUNT MATCH:\n"
+        f"   - The input has EXACTLY {num_detected_lines} physical line(s). You MUST return EXACTLY {num_detected_lines} line item(s) in 'line_breakdown'. DO NOT add extra lines or merge them!\n"
+        "4. CLEAN TAMIL SCRIPT ONLY (NO EMOJIS OR LATIN LETTERS):\n"
+        "   - 'full_sentence' and 'epigraphic_text' MUST BE 100% PURE TAMIL SCRIPT ONLY (No Latin/English letters, no parentheses, no romanization, and ZERO emojis)!\n"
+        "5. COMPREHENSIVE PER-LINE ANALYSIS SCHEMA (Return strict JSON object ONLY):\n"
         "{\n"
-        '  "full_sentence": "clean, word-segmented modern Tamil text containing ONLY the refined input sequence words",\n'
-        '  "english_translation": "Fluent English translation of the refined sentence",\n'
-        '  "meaning": "Detailed Tamil explanation of historical meaning and context",\n'
-        '  "english_meaning": "Detailed English explanation of historical meaning and context",\n'
-        '  "word_breakdown": [\n'
+        '  "full_sentence": "Full reconstructed Tamil text combining all lines.",\n'
+        '  "english_translation": "Full English translation of the entire inscription.",\n'
+        '  "meaning": "Overall epigraphic context.",\n'
+        '  "line_breakdown": [\n'
         '    {\n'
-        '      "word": "separated modern Tamil word",\n'
-        '      "type": "grammatical classification",\n'
-        '      "meaning": "Tamil meaning of this specific word",\n'
-        '      "english_meaning": "English meaning of this specific word",\n'
-        '      "is_restored": true or false\n'
+        '      "line_num": 1,\n'
+        '      "epigraphic_text": "Classical Tamil text of Line 1 only",\n'
+        '      "modern_meaning": "Clear modern standard Tamil translation of Line 1 only",\n'
+        '      "english_translation": "Fluent English translation of Line 1 only",\n'
+        '      "historical_note": "Rich 2-3 sentence historical & epigraphic explanation specifically for Line 1",\n'
+        '      "word_breakdown": [\n'
+        '        {\n'
+        '          "word": "Word in Line 1",\n'
+        '          "ancient_word": "Ancient spelling if different",\n'
+        '          "meaning": "Modern Tamil meaning",\n'
+        '          "english_meaning": "English meaning"\n'
+        '        }\n'
+        '      ]\n'
         '    }\n'
-        '  ],\n'
-        '  "alternative_readings": ["top 10 grammatically valid epigraphic readings strictly for the input"]\n'
+        '  ]\n'
         "}\n"
     )
 
     user_prompt = (
-        f'Raw Inscription Characters: "{raw_text}"{variations_str}\n'
-        'Refine the input sequence by performing word segmentation and restoring pulli dots or missing middle characters. '
-        'STRICT RULE: Do NOT add extra un-input words or un-cropped royal titles. Return strict JSON.'
+        f'{line_context_str}Raw Inscription Characters: "{raw_text}"{variations_str}\n'
+        f'Reconstruct EXACTLY {num_detected_lines} line(s) in "line_breakdown". Provide pure Tamil script without Latin letters or parentheses. Return strict JSON.'
     )
 
     payload = {
@@ -150,9 +166,18 @@ def gemini_epigraphic_refine(raw_characters: List[str], top_variations: Optional
             else:
                 result = json.loads(text_content)
 
-            # Post-processing safety guard:
-            # If the raw input is short (<= 7 chars), ensure we don't return hallucinated extra words
-            if result and "full_sentence" in result:
+            # Strip any accidental parenthetical transliteration or notes from sentences
+            if result:
+                if "full_sentence" in result and isinstance(result["full_sentence"], str):
+                    clean_full = re.sub(r'\([^\)]*\)', '', result["full_sentence"])
+                    # Remove any English/Latin characters from full_sentence
+                    clean_full = re.sub(r'[a-zA-Z]', '', clean_full)
+                    result["full_sentence"] = ' '.join(clean_full.split()).strip()
+
+                if "modern_tamil_sentence" in result and isinstance(result["modern_tamil_sentence"], str):
+                    clean_mod = re.sub(r'\([^\)]*\)', '', result["modern_tamil_sentence"])
+                    clean_mod = re.sub(r'[a-zA-Z]', '', clean_mod)
+                    result["modern_tamil_sentence"] = ' '.join(clean_mod.split()).strip()
                 raw_clean = raw_text.replace(" ", "")
                 if len(raw_clean) <= 7 and result.get("word_breakdown"):
                     filtered_breakdown = []

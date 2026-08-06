@@ -102,7 +102,8 @@ export default function InscriptionCanvas({
       }
 
       // Label badge
-      const badgeText = `${word.modern_tamil || '?'}`
+      const displayChar = corrections[word.id] ?? word.modern_tamil ?? '?'
+      const badgeText = `${displayChar}`
       ctx.font = '600 11px Inter, "Noto Sans Tamil", sans-serif'
       const tw = ctx.measureText(badgeText).width
       const bw = tw + 8
@@ -149,6 +150,36 @@ export default function InscriptionCanvas({
   }, [localWords, imageWidth, imageHeight, hoveredWordId, threshold, corrections, drawNewState])
 
   useEffect(() => { draw() }, [draw])
+
+  // Keyboard Shortcuts for Bounding Box Navigation (Tab / Shift+Tab)
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if (!localWords || !localWords.length) return
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const ids = localWords.map(w => w.id)
+        if (!ids.length) return
+
+        if (hoveredWordId === null) {
+          onWordHover?.(ids[0])
+        } else {
+          const idx = ids.indexOf(hoveredWordId)
+          if (e.shiftKey) {
+            const nextIdx = (idx - 1 + ids.length) % ids.length
+            onWordHover?.(ids[nextIdx])
+          } else {
+            const nextIdx = (idx + 1) % ids.length
+            onWordHover?.(ids[nextIdx])
+          }
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [localWords, hoveredWordId, onWordHover])
 
   useEffect(() => {
     const obs = new ResizeObserver(() => draw())
@@ -333,23 +364,26 @@ export default function InscriptionCanvas({
       style={{
         position: 'relative',
         width: '100%',
-        maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-        height: maxHeight ? `${maxHeight}px` : 'auto',
-        overflow: 'auto',
-        background: '#070707',
-        borderRadius: 10,
-        border: '1px solid var(--line)',
+        maxHeight: maxHeight ? `${maxHeight}px` : '52vh',
+        overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 10,
+        padding: 6,
+        boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           position: 'relative',
-          display: 'inline-block',
-          maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-          maxWidth: '100%',
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
           transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
           transformOrigin: 'top left',
           transition: 'transform 0.15s ease-out',
@@ -362,12 +396,11 @@ export default function InscriptionCanvas({
           onLoad={draw}
           style={{
             display: 'block',
-            maxWidth: '100%',
-            maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-            width: 'auto',
+            width: '100%',
+            maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
             height: 'auto',
             objectFit: 'contain',
-            borderRadius: 8,
+            borderRadius: 6,
           }}
         />
         <canvas

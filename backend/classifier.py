@@ -221,12 +221,17 @@ def classify_crop(crop: np.ndarray) -> Dict:
         confidence   : float      — softmax confidence of top-1 prediction [0, 1]
         top3         : List[Dict] — top-3 predictions, each with class_id,
                                     modern_tamil, and confidence
+        features     : List[float] — 128-d ResNet feature embedding vector
     """
     _ensure_loaded()
+    global _features_cache
+    _features_cache.clear()
 
     tensor = _crop_to_tensor(crop).unsqueeze(0).to(DEVICE)
     logits = _model(tensor)
     probs  = F.softmax(logits, dim=1)
+
+    feats = _features_cache[0][0].tolist() if _features_cache and len(_features_cache[0]) > 0 else []
 
     # Top-3 predictions
     top3_confs, top3_idxs = torch.topk(probs, k=min(3, probs.shape[1]), dim=1)
@@ -252,7 +257,15 @@ def classify_crop(crop: np.ndarray) -> Dict:
         "raw_chars":   best["raw_options"],
         "confidence":  best["confidence"],
         "top3":        top3,
+        "features":    feats,
     }
+
+
+@torch.no_grad()
+def extract_features(crop: np.ndarray) -> List[float]:
+    """Extract ResNet feature vector embedding for a single crop."""
+    res = classify_crop(crop)
+    return res.get("features", [])
 
 
 @torch.no_grad()

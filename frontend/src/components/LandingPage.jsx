@@ -98,7 +98,7 @@ export default function LandingPage({ onLaunchWorkspace }) {
         </p>
 
         {/* CTA group */}
-        <div className="reveal reveal-d3" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="reveal reveal-d3" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
           <button className="btn-primary" onClick={onLaunchWorkspace}>
             Open Workspace
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"

@@ -412,3 +412,55 @@ body {
   -webkit-backdrop-filter: blur(20px) !important;
   border-bottom: 1px solid var(--line) !important;
 }
+
+/* ── Hamburger Menu Navigation Rules ───────────────────────────────────── */
+.mobile-hamburger-btn {
+  display: none !important;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Comprehensive Mobile & Tablet Responsive Engine ──────────────────── */
+@media (max-width: 768px) {
+  .desktop-nav-links, .desktop-nav-actions {
+    display: none !important;
+  }
+  .mobile-hamburger-btn {
+    display: flex !important;
+  }
+
+  /* Touch target optimization & compact spacing */
+  :root {
+    --sp-3: 16px;
+    --sp-4: 24px;
+    --sp-5: 36px;
+    --sp-6: 48px;
+  }
+
+  /* Workspace Split Layout: Stack vertically on mobile */
+  .workspace-split-container {
+    flex-direction: column !important;
+  }
+
+  /* Sidebar transforms to full-width card on mobile */
+  .character-breakdown-sidebar {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+    border-left: none !important;
+    border-top: 1px solid var(--line) !important;
+    max-height: 420px !important;
+  }
+
+  /* 2-Column AI Output Panel -> Single Column Stack on Mobile */
+  .sentence-output-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Responsive image viewer height */
+  .inscription-canvas-wrap, img {
+    max-height: 48vh !important;
+  }
+}

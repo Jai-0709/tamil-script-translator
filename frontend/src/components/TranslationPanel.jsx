@@ -14,9 +14,15 @@ export default function TranslationPanel({
 
   const lineGroups = {}
   for (const w of words) {
-    if (!lineGroups[w.line]) lineGroups[w.line] = []
-    lineGroups[w.line].push(w)
+    const ln = w.line ?? 1
+    if (!lineGroups[ln]) lineGroups[ln] = []
+    lineGroups[ln].push(w)
   }
+
+  // Sort characters in each line strictly left-to-right by X coordinate
+  Object.keys(lineGroups).forEach(ln => {
+    lineGroups[ln].sort((a, b) => (a.x || 0) - (b.x || 0))
+  })
 
   function getLineColumns(lineCount) {
     if (gridMode !== 'auto') {
@@ -64,30 +70,6 @@ export default function TranslationPanel({
               {Object.keys(corrections).length} fixed
             </span>
           )}
-          
-          {/* Dynamic Grid Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span className="label" style={{ color: 'var(--fg-4)', fontSize: 10 }}>Cols</span>
-            <div style={{ display: 'flex', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 5, padding: 1 }}>
-              {['auto', 3, 4, 5].map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => setGridMode(opt)}
-                  title={opt === 'auto' ? 'Auto-adapt 3, 4, or 5 columns depending on line character count' : `Force ${opt} columns`}
-                  style={{
-                    background: gridMode === opt ? 'var(--surface-4)' : 'transparent',
-                    border: 'none',
-                    color: gridMode === opt ? 'var(--copper-light)' : 'var(--fg-3)',
-                    fontSize: 10, fontWeight: 700,
-                    padding: '2px 6px', borderRadius: 3,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {opt === 'auto' ? 'Auto' : `${opt}c`}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
 

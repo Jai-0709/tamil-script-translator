@@ -1,22 +1,47 @@
-frontend/node_modules/
-backend/__pycache__/
-*.pyc
+# Virtual environments
 venv/
+env/
+ENV/
+
+# Dependencies & Build Output
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Python Cache & Logs
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.pytest_cache/
+backend/__pycache__/
+
+# Environment Variables
 .env
-!.env.production
-debug/
-TAMIL SCRIPT DATASET/
-testing 1.jpg
-testing 2.jpg
+.env.local
+.env.development
+.env.production
 
-# Large model files
-models/*.zip
-models/*.pt
-*.pt
-models/*.pth
-
-# Datasets
+# Large Zip Files & Datasets
+*.zip
+raw_zips/
 CLEANED DATA SET/
 /dataset/
 /data/
 yolo_dataset/
+outputs/
+debug/
+
+# Model Checkpoint Artifacts
+models/*.zip
+*.pth
+*.pt
+!models/README.md
+
+# Temporary & Test files
+testing 1.jpg
+testing 2.jpg
+latest_segmentation_and_memory_fixes.md
+version_restore_guide.md
+.DS_Store

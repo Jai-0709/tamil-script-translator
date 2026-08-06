@@ -65,6 +65,28 @@ export default function MemoryStudio() {
     }
   }
 
+  const handleClearAllLayoutMemory = async () => {
+    if (!window.confirm("Are you sure you want to clear ALL saved segmentation & layout memories across all images?")) return
+    try {
+      await axios.post(`${BACKEND_URL}/api/clear-segmentation-memory`)
+      showToast("Cleared all saved segmentation & layout memories!")
+      fetchMemorySummary()
+    } catch (err) {
+      showToast("Failed to clear layout memory", false)
+    }
+  }
+
+  const handleClearEverything = async () => {
+    if (!window.confirm("CRITICAL WARNING: This will permanently reset ALL character vector memories AND ALL saved layout memories. Continue?")) return
+    try {
+      await axios.post(`${BACKEND_URL}/api/clear-all-memory`)
+      showToast("Wiped all vector memory & segmentation layout memory!")
+      fetchMemorySummary()
+    } catch (err) {
+      showToast("Failed to clear all memory", false)
+    }
+  }
+
   const exportMemoryJSON = () => {
     if (!memoryData) return
     const blob = new Blob([JSON.stringify(memoryData, null, 2)], { type: 'application/json' })
@@ -104,10 +126,11 @@ export default function MemoryStudio() {
         </div>
       )}
 
-      {/* Header */}
+      {/* Title & Actions Header */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 24, borderBottom: '1px solid var(--border)', paddingBottom: 16
+        marginBottom: 24, borderBottom: '1px solid var(--line)', paddingBottom: 16,
+        flexWrap: 'wrap', gap: 14
       }}>
         <div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: 'var(--copper)', margin: 0 }}>
@@ -117,7 +140,7 @@ export default function MemoryStudio() {
             Manage learned character feature vectors, custom box adjustments, additions, and saved image layouts.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button
             onClick={fetchMemorySummary}
             style={{
@@ -146,7 +169,29 @@ export default function MemoryStudio() {
               border: '1px solid rgba(239, 68, 68, 0.3)', cursor: 'pointer'
             }}
           >
-            Clear All Vector Memory
+            Clear Vector Memory
+          </button>
+          <button
+            onClick={handleClearAllLayoutMemory}
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+              background: 'rgba(234, 179, 8, 0.12)', color: '#eab308',
+              border: '1px solid rgba(234, 179, 8, 0.3)', cursor: 'pointer'
+            }}
+            title="Clear all saved segmentation layout memory across all images"
+          >
+            Clear Segmentation Memory
+          </button>
+          <button
+            onClick={handleClearEverything}
+            style={{
+              padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+              background: 'rgba(239, 68, 68, 0.18)', color: '#ef4444',
+              border: '1px solid rgba(239, 68, 68, 0.5)', cursor: 'pointer'
+            }}
+            title="Wipe all character vector memories and all saved layout memories"
+          >
+            Clear Everything
           </button>
         </div>
       </div>
@@ -202,30 +247,30 @@ export default function MemoryStudio() {
       {/* Tabs & Search */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 20
+        marginBottom: 20, flexWrap: 'wrap', gap: 12
       }}>
-        <div style={{ display: 'flex', gap: 8, background: 'var(--surface-2)', padding: 4, borderRadius: 10, border: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', gap: 8, background: 'var(--surface-2)', padding: 4, borderRadius: 10, border: '1px solid var(--line)', flexWrap: 'wrap' }}>
           <button
             onClick={() => setActiveTab('vector')}
             style={{
-              padding: '8px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+              padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
               background: activeTab === 'vector' ? 'var(--copper)' : 'transparent',
               color: activeTab === 'vector' ? 'var(--btn-primary-fg)' : 'var(--fg-3)',
               border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
             }}
           >
-            Vector Character Memory ({memoryData?.vector_memory_count ?? 0})
+            Vector Memory ({memoryData?.vector_memory_count ?? 0})
           </button>
           <button
             onClick={() => setActiveTab('layout')}
             style={{
-              padding: '8px 18px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+              padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
               background: activeTab === 'layout' ? 'var(--copper)' : 'transparent',
               color: activeTab === 'layout' ? 'var(--btn-primary-fg)' : 'var(--fg-3)',
               border: 'none', cursor: 'pointer', transition: 'all 0.15s ease'
             }}
           >
-            Segmentation Layout Memory ({memoryData?.layout_memory_count ?? 0})
+            Layout Memory ({memoryData?.layout_memory_count ?? 0})
           </button>
         </div>
 
@@ -235,7 +280,7 @@ export default function MemoryStudio() {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           style={{
-            padding: '8px 14px', borderRadius: 8, fontSize: 12, width: 260,
+            padding: '8px 14px', borderRadius: 8, fontSize: 12, width: '100%', maxWidth: 260,
             background: 'var(--surface-1)', color: 'var(--fg)',
             border: '1px solid var(--line)', outline: 'none'
           }}

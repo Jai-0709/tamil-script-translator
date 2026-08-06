@@ -59,10 +59,12 @@ export default function App() {
 
   const [isRefiningAI, setIsRefiningAI]                             = useState(false)
   const [aiRefinedState, setAiRefinedState]                         = useState(null)
+  const [aiModernTamilSentenceState, setAiModernTamilSentenceState] = useState(null)
   const [aiEnglishTranslationState, setAiEnglishTranslationState]   = useState(null)
   const [aiMeaningState, setAiMeaningState]                         = useState(null)
   const [aiEnglishMeaningState, setAiEnglishMeaningState]           = useState(null)
   const [aiWordBreakdownState, setAiWordBreakdownState]             = useState([])
+  const [aiLineBreakdownState, setAiLineBreakdownState]             = useState([])
 
   const [regionMode, setRegionMode]         = useState(false)
   const [selectedRegion, setSelectedRegion] = useState(null)
@@ -243,6 +245,7 @@ export default function App() {
       setAiRefinedState(null)
       setAiMeaningState(null)
       setAiWordBreakdownState([])
+      setAiLineBreakdownState([])
 
       showToast(regionOverride ? `Translated region (${data.words?.length || 0} characters)` : `Translated full inscription (${data.words?.length || 0} characters)`)
     } catch (err) {
@@ -280,18 +283,37 @@ export default function App() {
     setIsRefiningAI(true)
     try {
       const rawChars = words.map(w => corrections[w.id] || w.modern_tamil).filter(c => c && c !== '?')
+
+      const lineMap = {}
+      words.forEach(w => {
+        const lNum = w.line ?? 1
+        if (!lineMap[lNum]) lineMap[lNum] = []
+        const char = corrections[w.id] || w.modern_tamil
+        if (char && char !== '?') lineMap[lNum].push(char)
+      })
+      const lineGroups = Object.keys(lineMap).sort((a, b) => Number(a) - Number(b)).map(lNum => ({
+        line: Number(lNum),
+        text: lineMap[lNum].join('')
+      }))
+
       const res = await fetch(`${BACKEND_URL}/refine-ai`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ raw_characters: rawChars, alternative_sentences: effectiveAlternatives })
+        body: JSON.stringify({
+          raw_characters: rawChars,
+          alternative_sentences: effectiveAlternatives,
+          line_groups: lineGroups
+        })
       })
       if (!res.ok) throw new Error('AI Refinement failed')
       const data = await res.json()
       setAiRefinedState(data.ai_refined_sentence)
+      setAiModernTamilSentenceState(data.modern_tamil_sentence || data.ai_refined_sentence)
       setAiEnglishTranslationState(data.english_translation || '')
       setAiMeaningState(data.ai_meaning)
       setAiEnglishMeaningState(data.english_meaning || '')
       setAiWordBreakdownState(data.ai_word_breakdown || [])
+      setAiLineBreakdownState(data.line_breakdown || [])
       showToast('AI refinement complete')
     } catch (err) {
       console.error(err)
@@ -325,39 +347,55 @@ function sortInscriptionWords(wordsList = []) {
 function generateAlternativeSentences(wordList = [], corrMap = {}) {
   if (!wordList || !wordList.length) return []
   const sortedWords = sortInscriptionWords(wordList)
-  const primarySeq = sortedWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
+  const primarySeq = sortedWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
   if (!primarySeq) return []
 
   const alts = new Set()
+  alts.add(primarySeq)
 
-  // 1. Candidate substitutions from top3 and ambiguous_options for every character
-  sortedWords.forEach((word, idx) => {
-    const options = (word.top3?.map(t => t.modern_tamil) || word.ambiguous_options || []).filter(c => c && c !== '?')
-    options.forEach(cand => {
+  // 1. Collect candidate character options per position
+  const positionOptions = sortedWords.map(w => {
+    const primary = corrMap[w.id] ?? w.modern_tamil
+    const topCandidates = (w.top3?.map(t => t.modern_tamil) || w.ambiguous_options || []).filter(c => c && c !== '?')
+    const uniqueCands = Array.from(new Set([primary, ...topCandidates]))
+    return uniqueCands
+  })
+
+  // 2. Multi-position Permutations spread uniformly across beginning, middle, and end of sentence
+  const n = sortedWords.length
+  
+  // Single substitutions for every position index (0 to n-1)
+  for (let idx = 0; idx < n; idx++) {
+    const opts = positionOptions[idx] || []
+    for (const cand of opts) {
+      if (alts.size >= 80) break
       const copyWords = [...sortedWords]
-      copyWords[idx] = { ...word, modern_tamil: cand }
-      const varSeq = copyWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join('')
-      if (varSeq && varSeq !== primarySeq) alts.add(varSeq)
-    })
-  })
-
-  // 2. Classical Tamil Epigraphic / Grammatical Variants
-  const grammaticalVariants = ['வு', 'ந்த', 'ந்தது', 'த்தல்', 'த்து', 'ன்', 'கள்', 'அ']
-  grammaticalVariants.forEach(suf => {
-    alts.add(primarySeq + suf)
-  })
-
-  // 3. Sandhi / Euphonic variations for classical Tamil inscriptions
-  if (primarySeq.endsWith('ல்')) {
-    alts.add(primarySeq.slice(0, -1) + 'ற்')
-    alts.add(primarySeq.slice(0, -1) + 'ல')
-  }
-  if (primarySeq.endsWith('ம்')) {
-    alts.add(primarySeq.slice(0, -1) + 'ந்')
-    alts.add(primarySeq.slice(0, -1) + 'ங்')
+      copyWords[idx] = { ...sortedWords[idx], modern_tamil: cand }
+      const varSeq = copyWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+      if (varSeq) alts.add(varSeq)
+    }
   }
 
-  const result = Array.from(alts).filter(s => s && s.trim().length > 0).slice(0, 10)
+  // Dual-position substitutions across varied character distances (beginning + end, middle + end, etc.)
+  for (let step = 1; step < n; step += 2) {
+    for (let i = 0; i < n - step; i++) {
+      const j = i + step
+      const optsI = positionOptions[i] || []
+      const optsJ = positionOptions[j] || []
+      for (const candI of optsI) {
+        for (const candJ of optsJ) {
+          if (alts.size >= 120) break
+          const copyWords = [...sortedWords]
+          copyWords[i] = { ...sortedWords[i], modern_tamil: candI }
+          copyWords[j] = { ...sortedWords[j], modern_tamil: candJ }
+          const permSeq = copyWords.map(w => corrMap[w.id] ?? w.modern_tamil).filter(c => c && c !== '?').join(' ')
+          if (permSeq) alts.add(permSeq)
+        }
+      }
+    }
+  }
+
+  const result = Array.from(alts).filter(s => s && s.trim().length > 0).slice(0, 20)
   return result.length > 0 ? result : [primarySeq]
 }
 
@@ -608,6 +646,8 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
         body: JSON.stringify({ image_name: imageFile.name, corrections: corrected })
       }).then(r => r.json())
       showToast(`${res.saved_count} crops saved to dataset`)
+      setCorrections({})
+      saveCorrections({})
     } catch {
       showToast('Dataset save failed', false)
     }
@@ -716,7 +756,7 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
         )}
 
         {/* Top Section: Image Views (Left) + Character Breakdown Sidebar (Right 340px) */}
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <div className="workspace-split-container" style={{ display: 'flex', flex: 1, minHeight: 0 }}>
 
           {/* ── Left Panel: Image Views Area ──── */}
           <div style={{
@@ -740,150 +780,34 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
                   />
                 </div>
               ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  
-                  {/* Image View Mode & Window Adjustments Switcher Header */}
-                  <div style={{
-                    flexShrink: 0,
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '8px 14px',
-                    background: 'var(--surface-2)',
-                    borderBottom: '1px solid var(--line)',
-                    gap: 12, flexWrap: 'wrap',
-                  }}>
-                    {/* Left: View Mode Switcher */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span className="label" style={{ color: 'var(--fg-3)' }}>View Mode</span>
-                      <div style={{ display: 'flex', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: 2 }}>
-                        {[
-                          ['both', 'Two Images (Stacked)'],
-                          ['detection', 'Detection View'],
-                          ['original', 'Original + 4x Zoom'],
-                        ].map(([mode, label]) => (
-                          <button
-                            key={mode}
-                            onClick={() => setCanvasViewMode(mode)}
-                            style={{
-                              background: canvasViewMode === mode ? 'var(--surface-4)' : 'transparent',
-                              border: 'none',
-                              color: canvasViewMode === mode ? 'var(--fg)' : 'var(--fg-3)',
-                              fontSize: 11, fontWeight: 600,
-                              padding: '3px 10px', borderRadius: 4,
-                              cursor: 'pointer',
-                              transition: 'all var(--dur-fast)',
-                            }}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Right: Window Fit & Zoom Adjustment Toolbar */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      {/* Window Fit Mode Toggle */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span className="label" style={{ color: 'var(--fg-3)', fontSize: 11 }}>Window Fit</span>
-                        <div style={{ display: 'flex', background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: 2 }}>
-                          <button
-                            onClick={() => setImageFitMode('fit')}
-                            style={{
-                              background: imageFitMode === 'fit' ? 'var(--surface-4)' : 'transparent',
-                              border: 'none',
-                              color: imageFitMode === 'fit' ? 'var(--copper-light)' : 'var(--fg-3)',
-                              fontSize: 11, fontWeight: 600,
-                              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
-                            }}
-                          >
-                            Auto-Fit Window
-                          </button>
-                          <button
-                            onClick={() => setImageFitMode('full')}
-                            style={{
-                              background: imageFitMode === 'full' ? 'var(--surface-4)' : 'transparent',
-                              border: 'none',
-                              color: imageFitMode === 'full' ? 'var(--copper-light)' : 'var(--fg-3)',
-                              fontSize: 11, fontWeight: 600,
-                              padding: '3px 8px', borderRadius: 4, cursor: 'pointer',
-                            }}
-                          >
-                            Full Height
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Height Preset Selector (visible when fit mode === 'fit') */}
-                      {imageFitMode === 'fit' && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <span className="label" style={{ color: 'var(--fg-4)', fontSize: 11 }}>Height</span>
-                          <select
-                            value={windowHeight}
-                            onChange={(e) => setWindowHeight(Number(e.target.value))}
-                            style={{
-                              background: 'var(--surface-3)',
-                              color: 'var(--fg)',
-                              border: '1px solid var(--line)',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              padding: '2px 6px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <option value={380}>380px (Compact)</option>
-                            <option value={480}>480px (Standard)</option>
-                            <option value={620}>620px (Expanded)</option>
-                          </select>
-                        </div>
-                      )}
-
-                      {/* Zoom Adjustment Controls */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'var(--surface-3)', border: '1px solid var(--line)', borderRadius: 6, padding: '2px 4px' }}>
-                        <button
-                          onClick={() => setZoomLevel(z => Math.max(0.6, Math.round((z - 0.1) * 10) / 10))}
-                          title="Zoom Out"
-                          style={{ background: 'transparent', border: 'none', color: 'var(--fg)', fontSize: 12, padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}
-                        >
-                          -
-                        </button>
-                        <span style={{ fontSize: 11, color: 'var(--fg-2)', minWidth: 36, textAlign: 'center', fontWeight: 600 }}>
-                          {Math.round(zoomLevel * 100)}%
-                        </span>
-                        <button
-                          onClick={() => setZoomLevel(z => Math.min(2.5, Math.round((z + 0.1) * 10) / 10))}
-                          title="Zoom In"
-                          style={{ background: 'transparent', border: 'none', color: 'var(--fg)', fontSize: 12, padding: '2px 6px', cursor: 'pointer', fontWeight: 700 }}
-                        >
-                          +
-                        </button>
-                        {zoomLevel !== 1 && (
-                          <button
-                            onClick={() => setZoomLevel(1.0)}
-                            title="Reset Zoom"
-                            style={{ background: 'var(--surface-4)', border: 'none', color: 'var(--copper-light)', fontSize: 10, padding: '2px 6px', borderRadius: 4, cursor: 'pointer', marginLeft: 2 }}
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-
-                      {isCroppedView && (
-                        <button
-                          className="btn-ghost"
-                          onClick={handleResetToFullImage}
-                          style={{ fontSize: 11, color: 'var(--copper)' }}
-                        >
-                          Reset to Full Image
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                  {isCroppedView && (
+                    <button
+                      className="btn-ghost"
+                      onClick={handleResetToFullImage}
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 16,
+                        zIndex: 10,
+                        fontSize: 11,
+                        color: 'var(--copper)',
+                        background: 'var(--surface-3)',
+                        border: '1px solid var(--copper-border)',
+                        padding: '4px 10px',
+                        borderRadius: 6,
+                      }}
+                    >
+                      Reset to Full Image
+                    </button>
+                  )}
 
                   {/* Left Panel Scrollable Container: Images Only */}
-                  <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 20 }}>
+                  <div style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, width: '100%', boxSizing: 'border-box', overflow: 'hidden' }}>
                     
                     {/* Image 1: Bounding Box Detection View */}
                     {(canvasViewMode === 'both' || canvasViewMode === 'detection') && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%', alignItems: 'center' }}>
                         <div className="label" style={{ color: 'var(--copper)', letterSpacing: '0.08em' }}>
                           1. Detection View (Bounding Boxes & Character Labels)
                         </div>
@@ -911,7 +835,7 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
 
                     {/* Image 2: Clean Original Image with 4x Zoom Lens Magnifier */}
                     {(canvasViewMode === 'both' || canvasViewMode === 'original') && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                         <div className="label" style={{ color: 'var(--fg-3)', letterSpacing: '0.08em' }}>
                           2. Original Inscription (Hover character for Spotlight & 4x Magnifier)
                         </div>
@@ -963,10 +887,16 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
           </div>
 
           {/* ── Right Panel: Pinned Character Breakdown Sidebar (340px) ──────────── */}
-          <div style={{
+          <div className="character-breakdown-sidebar" style={{
             flex: '0 0 340px',
             display: 'flex', flexDirection: 'column',
             background: 'var(--base)',
+            maxHeight: '680px',
+            overflowY: 'auto',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'var(--copper) var(--surface-3)',
+            borderRadius: 'var(--r-sm)',
+            borderLeft: '1px solid var(--line)',
           }}>
             <TranslationPanel
               words={words}
@@ -997,10 +927,12 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
               fullSentence={effectiveFullSentence}
               rawSentence={apiResponse?.raw_sentence}
               aiRefinedSentence={aiRefinedState || apiResponse?.ai_refined_sentence}
+              modernTamilSentence={aiModernTamilSentenceState || apiResponse?.modern_tamil_sentence}
               englishTranslation={aiEnglishTranslationState || apiResponse?.english_translation}
               aiMeaning={aiMeaningState || apiResponse?.ai_meaning}
               englishMeaning={aiEnglishMeaningState || apiResponse?.english_meaning}
               aiWordBreakdown={aiWordBreakdownState.length ? aiWordBreakdownState : (apiResponse?.ai_word_breakdown || [])}
+              aiLineBreakdown={aiLineBreakdownState.length ? aiLineBreakdownState : (apiResponse?.line_breakdown || [])}
               alternativeSentences={effectiveAlternatives}
               onRefineAI={handleRefineAI}
               onSync={handleSyncTranslation}

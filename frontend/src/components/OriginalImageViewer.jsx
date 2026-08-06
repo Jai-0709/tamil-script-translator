@@ -16,6 +16,7 @@ export default function OriginalImageViewer({
   imageHeight,
   hoveredWordId,
   onWordHover,
+  corrections = {},
   maxHeight = null,
   zoomLevel = 1.0,
 }) {
@@ -38,7 +39,6 @@ export default function OriginalImageViewer({
     ctx.clearRect(0, 0, width, height)
 
     if (!hoveredWordId || !words.length || !imageWidth || !imageHeight) return
-    if (img.naturalWidth > 0 && Math.abs(img.naturalWidth - imageWidth) > 50) return
 
     const word = words.find(w => w.id === hoveredWordId)
     if (!word) return
@@ -86,7 +86,8 @@ export default function OriginalImageViewer({
     ctx.stroke()
 
     // ── Small label below the box ──────────────────────────────────────────
-    const label = `#${word.id}  ${word.modern_tamil || '?'}`
+    const displayChar = corrections[word.id] ?? word.modern_tamil ?? '?'
+    const label = `#${word.id}  ${displayChar}`
     ctx.font     = 'bold 13px Inter, "Noto Sans Tamil", sans-serif'
     const tw = ctx.measureText(label).width
     const bx = x
@@ -102,7 +103,7 @@ export default function OriginalImageViewer({
     ctx.globalAlpha = 1
     ctx.fillStyle   = '#ffffff'
     ctx.fillText(label, bx + 7, by + 15)
-  }, [hoveredWordId, words, imageWidth, imageHeight])
+  }, [hoveredWordId, words, imageWidth, imageHeight, corrections])
 
   // ── Zoomed magnifier ──────────────────────────────────────────────────────
   const drawZoom = useCallback(() => {
@@ -111,42 +112,52 @@ export default function OriginalImageViewer({
     if (!zoomCanvas || !img || img.naturalWidth === 0) return
 
     const ctx = zoomCanvas.getContext('2d')
-    ctx.clearRect(0, 0, zoomCanvas.width, zoomCanvas.height)
+    const cw = zoomCanvas.width
+    const ch = zoomCanvas.height
+    ctx.clearRect(0, 0, cw, ch)
 
     if (!hoveredWordId || !words.length || !imageWidth || !imageHeight) return
 
     const word = words.find(w => w.id === hoveredWordId)
     if (!word) return
 
-    // Source region in original image pixels (with generous padding)
-    const PAD    = Math.round(Math.max(word.w, word.h) * 0.6)
-    const srcX   = Math.max(0, word.x - PAD)
-    const srcY   = Math.max(0, word.y - PAD)
-    const srcW   = Math.min(imageWidth  - srcX, word.w + PAD * 2)
-    const srcH   = Math.min(imageHeight - srcY, word.h + PAD * 2)
+    // Scale word coordinates to natural image pixels
+    const scaleX = img.naturalWidth / imageWidth
+    const scaleY = img.naturalHeight / imageHeight
 
-    // Fill the zoom canvas with the cropped region (stretched to fill)
+    const wordX = word.x * scaleX
+    const wordY = word.y * scaleY
+    const wordW = word.w * scaleX
+    const wordH = word.h * scaleY
+
+    // Source region in original image pixels (preserving 1:1 aspect ratio)
+    const PAD = Math.round(Math.max(wordW, wordH) * 0.7)
+    const srcX = Math.max(0, wordX - PAD)
+    const srcY = Math.max(0, wordY - PAD)
+    const srcW = Math.min(img.naturalWidth - srcX, wordW + PAD * 2)
+    const srcH = Math.min(img.naturalHeight - srcY, wordH + PAD * 2)
+
     ctx.imageSmoothingEnabled = false   // crisp pixel rendering
     ctx.drawImage(
       img,
       srcX, srcY, srcW, srcH,
-      0, 0, zoomCanvas.width, zoomCanvas.height
+      0, 0, cw, ch
     )
 
-    // ── Highlight box inside zoom canvas ──────────────────────────────────
-    const zx = (word.x - srcX) / srcW * zoomCanvas.width
-    const zy = (word.y - srcY) / srcH * zoomCanvas.height
-    const zw = word.w / srcW * zoomCanvas.width
-    const zh = word.h / srcH * zoomCanvas.height
+    // Highlight box inside zoom canvas
+    const zx = ((wordX - srcX) / srcW) * cw
+    const zy = ((wordY - srcY) / srcH) * ch
+    const zw = (wordW / srcW) * cw
+    const zh = (wordH / srcH) * ch
 
-    // Slight tint outside
-    ctx.fillStyle = 'rgba(0,0,0,0.25)'
-    ctx.fillRect(0, 0, zoomCanvas.width, zy)
-    ctx.fillRect(0, zy + zh, zoomCanvas.width, zoomCanvas.height - zy - zh)
-    ctx.fillRect(0, zy, zx, zh)
-    ctx.fillRect(zx + zw, zy, zoomCanvas.width - zx - zw, zh)
+    // Darken surrounding area in zoom preview
+    ctx.fillStyle = 'rgba(0,0,0,0.30)'
+    ctx.fillRect(0, 0, cw, Math.max(0, zy))
+    ctx.fillRect(0, Math.min(ch, zy + zh), cw, ch - (zy + zh))
+    ctx.fillRect(0, Math.max(0, zy), Math.max(0, zx), Math.min(ch, zh))
+    ctx.fillRect(Math.min(cw, zx + zw), Math.max(0, zy), cw - (zx + zw), Math.min(ch, zh))
 
-    // Orange border
+    // Glowing Orange border
     ctx.save()
     ctx.shadowColor = '#f97316'
     ctx.shadowBlur  = 12
@@ -155,17 +166,18 @@ export default function OriginalImageViewer({
     ctx.strokeRect(zx + 1, zy + 1, zw - 2, zh - 2)
     ctx.restore()
 
-    // Label
-    const label = word.modern_tamil || '?'
-    ctx.font     = `bold ${Math.min(28, zoomCanvas.height * 0.18)}px Inter, "Noto Sans Tamil", sans-serif`
+    // Character Label Overlay
+    const displayChar = corrections[word.id] ?? word.modern_tamil ?? '?'
+    const label = `#${word.id} ${displayChar}`
+    ctx.font     = 'bold 14px Inter, "Noto Sans Tamil", sans-serif'
     ctx.fillStyle   = '#f97316'
     ctx.globalAlpha = 0.95
     const tw = ctx.measureText(label).width
-    ctx.fillRect(4, zoomCanvas.height - 36, tw + 16, 30)
-    ctx.fillStyle   = '#000000'
+    ctx.fillRect(4, ch - 28, tw + 14, 24)
+    ctx.fillStyle   = '#ffffff'
     ctx.globalAlpha = 1
-    ctx.fillText(label, 12, zoomCanvas.height - 11)
-  }, [hoveredWordId, words, imageWidth, imageHeight])
+    ctx.fillText(label, 11, ch - 12)
+  }, [hoveredWordId, words, imageWidth, imageHeight, corrections])
 
   useEffect(() => { drawSpotlight(); drawZoom() }, [drawSpotlight, drawZoom])
 
@@ -198,7 +210,7 @@ export default function OriginalImageViewer({
     onWordHover(hit)
   }
 
-  const ZOOM_SIZE = 200   // px × px zoom panel
+  const ZOOM_SIZE = maxHeight ? Math.min(190, maxHeight - 24) : 190
 
   return (
     <div
@@ -206,23 +218,26 @@ export default function OriginalImageViewer({
       style={{
         position: 'relative',
         width: '100%',
-        maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-        height: maxHeight ? `${maxHeight}px` : 'auto',
-        overflow: 'auto',
-        background: '#070707',
-        borderRadius: 10,
-        border: '1px solid var(--line)',
+        maxHeight: maxHeight ? `${maxHeight}px` : '52vh',
+        overflow: 'visible', // Ensures floating zoom popup is never clipped
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        background: 'var(--surface-2)',
+        border: '1px solid var(--line)',
+        borderRadius: 10,
+        padding: 6,
+        boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           position: 'relative',
-          display: 'inline-block',
-          maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-          maxWidth: '100%',
+          width: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
           transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
           transformOrigin: 'top left',
           transition: 'transform 0.15s ease-out',
@@ -235,12 +250,11 @@ export default function OriginalImageViewer({
           onLoad={() => { drawSpotlight(); drawZoom() }}
           style={{
             display: 'block',
-            maxWidth: '100%',
-            maxHeight: maxHeight ? `${maxHeight}px` : 'none',
-            width: 'auto',
+            width: '100%',
+            maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
             height: 'auto',
             objectFit: 'contain',
-            borderRadius: 8,
+            borderRadius: 6,
           }}
         />
 
@@ -259,61 +273,64 @@ export default function OriginalImageViewer({
             pointerEvents: words.length ? 'auto' : 'none',
           }}
         />
+      </div>
 
-        {/* ── Zoom panel — dynamically avoids covering the hovered character ── */}
-        {hoveredWordId && (() => {
-          const hoveredWord = words.find(w => w.id === hoveredWordId);
-          const isRightHalf = hoveredWord && imageWidth && (hoveredWord.x > imageWidth / 2);
-          return (
+      {/* ── Zoom panel — Dynamically sized to fit container height with ZERO clipping ── */}
+      {hoveredWordId && (() => {
+        const containerH = containerRef.current?.clientHeight || (maxHeight ? maxHeight : 180)
+        const FLOAT_ZOOM_SIZE = Math.max(105, Math.min(160, containerH - 16))
+        const hoveredWord = words.find(w => w.id === hoveredWordId);
+        const isRightHalf = hoveredWord && imageWidth && (hoveredWord.x > imageWidth / 2);
+        return (
+          <div style={{
+            position: 'absolute',
+            top: 6,
+            right: isRightHalf ? undefined : 12,
+            left: isRightHalf ? 12 : undefined,
+            width:  FLOAT_ZOOM_SIZE,
+            height: FLOAT_ZOOM_SIZE,
+            borderRadius: 10,
+            border: '2px solid #f97316',
+            boxShadow: '0 0 0 3px rgba(249,115,22,0.4), 0 8px 30px rgba(0,0,0,0.95)',
+            overflow: 'hidden',
+            background: '#0d0d0d',
+            zIndex: 99999,
+            pointerEvents: 'none',
+          }}>
+            {/* Header */}
             <div style={{
               position: 'absolute',
-              top: 10,
-              right: isRightHalf ? undefined : 10,
-              left: isRightHalf ? 10 : undefined,
-              width:  ZOOM_SIZE,
-              height: ZOOM_SIZE,
-              borderRadius: 12,
-              border: '2px solid #f97316',
-              boxShadow: '0 0 0 3px rgba(249,115,22,0.25), 0 8px 32px rgba(0,0,0,0.6)',
-              overflow: 'hidden',
-              background: '#111',
-              zIndex: 20,
+              top: 0, left: 0, right: 0,
+              height: 20,
+              background: '#f97316',
+              display: 'flex',
+              alignItems: 'center',
+              paddingLeft: 6,
+              fontSize: 9,
+              fontWeight: 700,
+              letterSpacing: '0.05em',
+              color: '#000',
+              zIndex: 2,
+              textTransform: 'uppercase',
             }}>
-              {/* Header */}
-              <div style={{
-                position: 'absolute',
-                top: 0, left: 0, right: 0,
-                height: 24,
-                background: '#f97316',
-                display: 'flex',
-                alignItems: 'center',
-                paddingLeft: 8,
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.06em',
-                color: '#000',
-                zIndex: 2,
-                textTransform: 'uppercase',
-              }}>
-                🔎 Zoomed In
-              </div>
-
-              <canvas
-                ref={zoomRef}
-                width={ZOOM_SIZE}
-                height={ZOOM_SIZE}
-                style={{
-                  position: 'absolute',
-                  top: 24, left: 0,
-                  width:  ZOOM_SIZE,
-                  height: ZOOM_SIZE - 24,
-                  imageRendering: 'pixelated',
-                }}
-              />
+              4X Zoom Magnifier
             </div>
-          )
-        })()}
-      </div>
+
+            <canvas
+              ref={zoomRef}
+              width={FLOAT_ZOOM_SIZE}
+              height={FLOAT_ZOOM_SIZE}
+              style={{
+                position: 'absolute',
+                top: 20, left: 0,
+                width:  FLOAT_ZOOM_SIZE,
+                height: FLOAT_ZOOM_SIZE - 20,
+                imageRendering: 'pixelated',
+              }}
+            />
+          </div>
+        )
+      })()}
     </div>
   )
 }

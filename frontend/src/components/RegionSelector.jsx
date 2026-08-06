@@ -218,28 +218,30 @@ export default function RegionSelector({
         padding: '10px 16px',
         background: 'var(--surface-2)',
         borderBottom: '1px solid var(--line)',
+        flexWrap: 'wrap',
+        gap: 10,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span className="label" style={{ color: 'var(--copper)' }}>Region Crop Mode</span>
           <span style={{ fontSize: 12, color: 'var(--fg-3)' }}>
             Drag on image to select target region
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', width: window.innerWidth <= 480 ? '100%' : 'auto', justifyContent: 'flex-end' }}>
           {regionPct && (
             <button className="btn-ghost" onClick={handleReset} style={{ fontSize: 12 }}>
               Reset crop
             </button>
           )}
-          <button className="btn-secondary" onClick={onCancel} style={{ padding: '5px 12px', fontSize: 12 }}>
+          <button className="btn-secondary" onClick={onCancel} style={{ padding: '6px 14px', fontSize: 12 }}>
             Cancel
           </button>
           <button
             className="btn-primary"
             disabled={!regionPct || regionPct.w < 2 || regionPct.h < 2}
             onClick={handleConfirm}
-            style={{ padding: '5px 16px', fontSize: 12 }}
+            style={{ padding: '6px 18px', fontSize: 12 }}
           >
             Analyse Crop Region
           </button>
@@ -261,7 +263,7 @@ export default function RegionSelector({
           background: 'var(--base)',
         }}
       >
-        <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+        <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%', maxHeight: '72vh' }}>
           <img
             ref={imgRef}
             src={src}
@@ -270,6 +272,8 @@ export default function RegionSelector({
             style={{
               display: 'block',
               maxWidth: '100%',
+              maxHeight: '72vh',
+              width: 'auto',
               height: 'auto',
               borderRadius: 'var(--r-sm)',
               border: '1px solid var(--line)',
