@@ -234,6 +234,10 @@ def apply_ugsm_auto_segmentation(model_regions: List[Dict], image: np.ndarray) -
     return result_regions
 
 
+@app.get("/")
+def root():
+    return {"status": "online", "message": "Classical Tamil Epigraphy Suite API", "version": "2.0.0"}
+
 # Pre-warm the model at startup so the first request is not slow
 @app.on_event("startup")
 async def _warmup():

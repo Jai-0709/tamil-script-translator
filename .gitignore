@@ -38,6 +38,8 @@ models/*.zip
 *.pth
 *.pt
 !models/README.md
+!models/ancient_tamil_classifier.pth
+!models/best.pt
 
 # Temporary & Test files
 testing 1.jpg
