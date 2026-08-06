@@ -1,22 +1,19 @@
-# Ancient Tamil Inscription Translator — Backend Dependencies
+# Classical Tamil Epigraphy Suite — Backend Dependencies (Free Hosting Ready)
 
-# Deep Learning
-torch
-torchvision
-torchaudio
-efficientnet_pytorch
+# FastAPI Web Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.22.0
+python-multipart>=0.0.6
+requests>=2.31.0
 
-# Image Processing
-Pillow
-opencv-python
-albumentations
+# AI / Deep Learning Models
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+google-generativeai>=0.5.0
 
-# API
-fastapi
-uvicorn[standard]
-python-multipart
-
-# Utilities
-numpy
-matplotlib
-scikit-learn
+# Computer Vision & Image Processing (Headless for Server Deployment)
+opencv-python-headless>=4.8.0
+Pillow>=9.5.0
+numpy>=1.24.0
+scikit-learn>=1.2.0

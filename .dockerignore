@@ -1,0 +1,15 @@
+venv/
+env/
+frontend/
+.git/
+.gitignore
+*.zip
+*.log
+__pycache__/
+*.pyc
+testing 1.jpg
+testing 2.jpg
+CLEANED DATA SET/
+raw_zips/
+outputs/
+debug/
