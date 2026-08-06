@@ -33,20 +33,22 @@ try:
 except ImportError:
     YOLO = None
 
-# Attempt to load YOLO model
+# Opt-in heavy YOLO model only when ENABLE_YOLO=true (prevents 380MB RAM OOM crash on free cloud servers)
+_ENABLE_HEAVY_YOLO = os.environ.get("ENABLE_YOLO", "false").lower() in ("true", "1", "yes")
+
 _YOLO_MODEL = None
 _YOLO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "best.pt")
 if not os.path.exists(_YOLO_PATH):
     _YOLO_PATH = os.path.join(os.path.dirname(__file__), "best.pt")
 
-if YOLO and os.path.exists(_YOLO_PATH):
+if _ENABLE_HEAVY_YOLO and YOLO and os.path.exists(_YOLO_PATH):
     try:
         _YOLO_MODEL = YOLO(_YOLO_PATH)
         print(f"[SEG] Loaded YOLO model from {_YOLO_PATH}")
     except Exception as e:
         print(f"[WARN] Failed to load YOLO model: {e}")
 else:
-    print("[WARN] YOLO model not found or ultralytics not installed. Smart Mode will fallback to Classic.")
+    print("[INFO] Lightweight OpenCV Contour Mode active (optimized for free-tier 512MB RAM servers).")
 
 # ---------------------------------------------
 #  Optional debug image saving
