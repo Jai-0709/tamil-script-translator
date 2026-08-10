@@ -33,8 +33,8 @@ try:
 except ImportError:
     YOLO = None
 
-# Use lightweight pure OpenCV contour segmentation by default (keeps RAM < 125MB for 100% free hosting)
-_ENABLE_HEAVY_YOLO = os.environ.get("ENABLE_YOLO", "false").lower() in ("true", "1", "yes")
+# Heavy trained YOLO model (models/best.pt) enabled by default for maximum local accuracy
+_ENABLE_HEAVY_YOLO = os.environ.get("ENABLE_YOLO", "true").lower() in ("true", "1", "yes")
 
 _YOLO_MODEL = None
 _YOLO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models", "best.pt")
@@ -767,7 +767,7 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                     continue
                     
                 tile = image_bgr[y1:y2, x1:x2]
-                results = _YOLO_MODEL(tile, conf=0.04, iou=0.55, augment=True, verbose=False)
+                results = _YOLO_MODEL(tile, conf=0.25, iou=0.55, augment=True, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
@@ -785,7 +785,7 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
 
         # Apply NMS to remove duplicates across overlapping slices
         if len(yolo_boxes) > 0:
-            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.04, nms_threshold=0.55)
+            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.25, nms_threshold=0.55)
             if len(indices) > 0:
                 indices = indices.flatten()
                 
