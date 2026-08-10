@@ -483,9 +483,9 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
         # NOTE: keep k_w/k_h SMALL -- large dilation merges adjacent characters!
         k_w = 2
         k_h = 2
-        min_w  = max(8, img_w // 60)
-        min_h  = max(8, img_h // 30)
-        min_area = min_w * min_h // 2
+        min_w  = max(18, img_w // 45)
+        min_h  = max(20, img_h // 22)
+        min_area = int(min_w * min_h * 0.8)
         max_w  = int(img_w * 0.30)
         max_h  = int(img_h * 0.50)
         border = max(4, int(min(img_w, img_h) * 0.003))
