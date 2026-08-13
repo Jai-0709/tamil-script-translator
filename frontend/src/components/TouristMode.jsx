@@ -12,7 +12,7 @@ export default function TouristMode() {
   const [error, setError] = useState(null)
   const [dragOver, setDragOver] = useState(false)
   const [hoveredWordId, setHoveredWordId] = useState(null)
-  const [activeView, setActiveView] = useState('canvas') // 'canvas' | 'spotlight'
+  const [activeView, setActiveView] = useState('lines') // 'lines' | 'canvas' | 'spotlight'
   const [speakingLine, setSpeakingLine] = useState(null)
 
   const fileInputRef = useRef(null)
@@ -281,6 +281,20 @@ export default function TouristMode() {
             {/* View Mode Toggle */}
             <div style={{ display: 'flex', borderRadius: 8, border: '1px solid var(--line)', overflow: 'hidden' }}>
               <button
+                onClick={() => setActiveView('lines')}
+                style={{
+                  padding: '5px 12px',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  border: 'none',
+                  background: activeView === 'lines' ? 'var(--copper)' : 'var(--surface-2)',
+                  color: activeView === 'lines' ? '#000' : 'var(--fg-3)',
+                  cursor: 'pointer',
+                }}
+              >
+                Line Ribbons (Paradigm 1)
+              </button>
+              <button
                 onClick={() => setActiveView('canvas')}
                 style={{
                   padding: '5px 12px',
@@ -292,7 +306,7 @@ export default function TouristMode() {
                   cursor: 'pointer',
                 }}
               >
-                Bounding Boxes Overlay
+                Glyph Boxes
               </button>
               <button
                 onClick={() => setActiveView('spotlight')}
@@ -422,7 +436,19 @@ export default function TouristMode() {
                 )}
               </div>
 
-              {activeView === 'canvas' ? (
+              {activeView === 'lines' ? (
+                <InscriptionCanvas
+                  imageURL={imageURL}
+                  words={result.line_boxes || result.words || []}
+                  imageWidth={result.image_width}
+                  imageHeight={result.image_height}
+                  hoveredWordId={hoveredWordId}
+                  onWordHover={setHoveredWordId}
+                  onWordClick={() => {}}
+                  threshold={0}
+                  maxHeight={420}
+                />
+              ) : activeView === 'canvas' ? (
                 <InscriptionCanvas
                   imageURL={imageURL}
                   words={result.words || []}

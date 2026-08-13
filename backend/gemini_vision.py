@@ -90,25 +90,28 @@ def gemini_vision_hybrid_translate(
         "from the Chola, Pandya, Pallava, and Vijayanagara dynasties.\n\n"
         "TASK: You are given TWO inputs:\n"
         "  1. A PHOTOGRAPH of an ancient Tamil stone inscription\n"
-        "  2. An AI-detected OCR reading of the characters (from a trained ancient Tamil classifier)\n\n"
-        "The OCR reading was produced by a YOLOv8 segmentation model and a ViT classifier trained specifically "
-        "on ancient Tamil script. It may contain errors — some characters may be misread, merged, or split.\n\n"
+        "  2. An AI-detected OCR reading of the physical lines (from a trained ancient Tamil classifier)\n\n"
         "YOUR JOB:\n"
         "  - LOOK at the stone photograph carefully to verify and correct the OCR reading\n"
         "  - Cross-reference each detected line against what you actually see carved in the stone\n"
         "  - Fix any OCR errors (character substitutions, missing characters, extra noise characters)\n"
-        "  - Insert proper word spacing between ancient Tamil words\n"
+        "  - INSERT CLEAN WORD SPACING (சொற்பிரிப்பு) BETWEEN ALL INDIVIDUAL TAMIL WORDS\n"
         "  - Provide accurate modern Tamil and English translations\n\n"
-        "CRITICAL EPIGRAPHIC RULES:\n"
-        "1. WORD SPACING: Ancient inscriptions lack word spaces. YOU MUST insert clean spaces between words.\n"
-        "2. GOLD WEIGHTS: Preserve ancient metrics — கழஞ்சு (kalanju), மஞ்சாடி (manjadi), நாழி (naazhi), காசு (kasu). "
-        "Do NOT confuse these with regnal year formulas.\n"
-        "3. PURE TAMIL: 'epigraphic_text' and 'full_sentence' must be 100% Tamil script only — NO Latin letters, NO emojis.\n"
-        f"4. LINE COUNT: The OCR detected {num_lines} physical line(s). Verify against the image — adjust if needed.\n"
+        "CRITICAL EPIGRAPHIC WORD SPACING RULES:\n"
+        "1. EPIGRAPHIC WORD SPACING (MANDATORY SPACES BETWEEN WORDS):\n"
+        "   - Ancient stone inscriptions lacked word spaces. In 'epigraphic_text', 'modern_meaning', and 'full_sentence', YOU MUST ALWAYS INSERT CLEAN SPACES BETWEEN INDIVIDUAL TAMIL WORDS!\n"
+        "   - E.g. Return 'ஸ்ரீ ராஜராஜ தேவருக்கு ஆண்டு இருபதாவது', NOT concatenated strings like 'ஸ்ரீராஜராஜதேவர்க்கியாண்டிருபதாவது'!\n"
+        "   - E.g. Return 'செய்து குடுத்த திருப்பட்டம் ஒன்று பொன்', NOT 'செயதுகுடுதததிருபபடடமஒனறுபொன'!\n"
+        "2. GOLD WEIGHTS & MEASUREMENTS ACCURACY:\n"
+        "   - Preserve ancient metrics — கழஞ்சு (kalanju), மஞ்சாடி (manjadi), நாழி (naazhi), காசு (kasu).\n"
+        "   - E.g. 'இருபத்தைந்தரை கழஞ்சு பொன்' (25.5 Kalanju Gold Weight). Do NOT confuse gold weights with regnal year formulas.\n"
+        "3. PURE TAMIL SCRIPT ONLY:\n"
+        "   - 'epigraphic_text', 'modern_meaning', and 'full_sentence' MUST be 100% pure Tamil script — NO Latin/English letters, NO parentheses, NO emojis.\n"
+        f"4. PHYSICAL LINE COUNT: The OCR detected {num_lines} physical line(s). Verify against the image — adjust line breakdown if needed.\n"
         "5. OVERALL CONTEXT: Provide a brief historical summary (dynasty, period, temple, purpose).\n\n"
         "Return ONLY a valid JSON object in this exact format:\n"
         "{\n"
-        '  "full_sentence": "Complete corrected Tamil text of the entire inscription",\n'
+        '  "full_sentence": "Complete corrected Tamil text of the entire inscription with clean word spaces",\n'
         '  "english_translation": "Complete English translation",\n'
         '  "overall_context": "Brief historical significance (2-3 sentences)",\n'
         '  "dynasty": "Chola/Pandya/Pallava/Vijayanagara/Unknown",\n'
@@ -117,8 +120,8 @@ def gemini_vision_hybrid_translate(
         '  "line_breakdown": [\n'
         '    {\n'
         '      "line_num": 1,\n'
-        '      "epigraphic_text": "Corrected ancient Tamil text of this line",\n'
-        '      "modern_meaning": "Modern Tamil translation of this line",\n'
+        '      "epigraphic_text": "Ancient Tamil text of this line with clean word spaces",\n'
+        '      "modern_meaning": "Modern Tamil translation of this line with clean word spaces",\n'
         '      "english_translation": "English translation of this line",\n'
         '      "historical_note": "Historical context for this specific line"\n'
         '    }\n'

@@ -560,8 +560,9 @@ async def tourist_translate(file: UploadFile = File(...)):
             "model_used": "Local YOLOv8 + ViT Model Fallback"
         }
 
-    # Inject OCR metadata and character bounding boxes for visual proof overlay
+    # Inject OCR metadata, character bounding boxes, and physical line-ribbon boxes for Paradigm 1 Line Overlay
     formatted_words = []
+    line_boxes_map = {}
     for r, res in zip(regions, results):
         t_char = res.get("modern_tamil", "?")
         if "," in str(t_char):
@@ -579,7 +580,33 @@ async def tourist_translate(file: UploadFile = File(...)):
             "is_unknown": False,
         })
 
+        l_num = r.get("line", 1)
+        rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+        if l_num not in line_boxes_map:
+            line_boxes_map[l_num] = {"x1": rx, "y1": ry, "x2": rx + rw, "y2": ry + rh}
+        else:
+            line_boxes_map[l_num]["x1"] = min(line_boxes_map[l_num]["x1"], rx)
+            line_boxes_map[l_num]["y1"] = min(line_boxes_map[l_num]["y1"], ry)
+            line_boxes_map[l_num]["x2"] = max(line_boxes_map[l_num]["x2"], rx + rw)
+            line_boxes_map[l_num]["y2"] = max(line_boxes_map[l_num]["y2"], ry + rh)
+
+    line_ribbon_boxes = []
+    for l_num in sorted(line_boxes_map.keys()):
+        b = line_boxes_map[l_num]
+        pad_y, pad_x = 6, 8
+        x1 = max(0, b["x1"] - pad_x)
+        y1 = max(0, b["y1"] - pad_y)
+        x2 = min(img_w, b["x2"] + pad_x)
+        y2 = min(img_h, b["y2"] + pad_y)
+        line_ribbon_boxes.append({
+            "id": l_num,
+            "line": l_num,
+            "x": x1, "y": y1, "w": max(1, x2 - x1), "h": max(1, y2 - y1),
+            "modern_tamil": f"Line {l_num}"
+        })
+
     result["words"] = formatted_words
+    result["line_boxes"] = line_ribbon_boxes
     result["image_width"] = img_w
     result["image_height"] = img_h
     result["ocr_line_groups"] = line_groups
