@@ -560,7 +560,28 @@ async def tourist_translate(file: UploadFile = File(...)):
             "model_used": "Local YOLOv8 + ViT Model Fallback"
         }
 
-    # Inject OCR metadata for transparency
+    # Inject OCR metadata and character bounding boxes for visual proof overlay
+    formatted_words = []
+    for r, res in zip(regions, results):
+        t_char = res.get("modern_tamil", "?")
+        if "," in str(t_char):
+            t_char = str(t_char).split(",")[0].strip()
+        formatted_words.append({
+            "id": r.get("id", 1),
+            "x": r.get("x", 0),
+            "y": r.get("y", 0),
+            "w": r.get("w", 10),
+            "h": r.get("h", 10),
+            "class_id": res.get("class_id", 0),
+            "modern_tamil": t_char,
+            "confidence": res.get("confidence", 0.90),
+            "line": r.get("line", 1),
+            "is_unknown": False,
+        })
+
+    result["words"] = formatted_words
+    result["image_width"] = img_w
+    result["image_height"] = img_h
     result["ocr_line_groups"] = line_groups
     result["ocr_char_count"] = sum(len(lg["text"]) for lg in line_groups)
 
