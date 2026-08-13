@@ -132,10 +132,33 @@ Open **`http://localhost:5173`** in your browser!
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | Health check endpoint returning API status & version. |
-| `POST` | `/translate` | Primary endpoint. Accepts image file + options; returns detected lines, character bounding boxes, classification scores, and Gemini epigraphic translations. |
+| `POST` | `/translate` | Research Mode. Full segmentation + classification pipeline with bounding boxes and manual correction tools. |
+| `POST` | `/api/tourist-translate` | **Tourist Mode.** Hybrid pipeline: YOLO segmentation → ViT classifier → Gemini Vision cross-verification. Returns clean line-by-line translations. |
 | `POST` | `/refine-ai` | Re-evaluates detected text using Gemini 2.5 AI for customized prompt refinement. |
 | `GET` | `/api/dataset/stats` | Returns class folder counts and crop counts for Dataset Studio. |
 | `POST` | `/api/remember` | Saves manual character correction to the local Vector Memory store. |
+
+---
+
+## 🏛️ Tourist Mode (Government / Public Use)
+
+Designed for tourists visiting temples — take a photo, upload it, get the meaning instantly with **zero manual intervention**.
+
+### Hybrid Architecture
+```mermaid
+graph LR
+    A["Tourist takes photo"] --> B["Upload to App"]
+    B --> C["YOLO Tiled Segmentation<br/>(trained on ancient Tamil)"]
+    C --> D["ViT 247-Class Classifier<br/>(trained on ancient Tamil)"]
+    D --> E["Group characters into lines"]
+    E --> F["Gemini Vision API<br/>(OCR text + original image)"]
+    F --> G["Line-by-line Tamil + English<br/>+ Historical Context"]
+```
+
+### Why Hybrid?
+- **Gemini alone can't read ancient Tamil** — the carved characters look nothing like modern Tamil that Gemini's vision model knows.
+- **YOLO + Classifier alone requires manual correction** — cascaded errors compound across 100+ characters.
+- **Hybrid combines both strengths**: Your trained models detect ancient characters → Gemini cross-verifies against the actual stone photo and provides contextual translation.
 
 ---
 
