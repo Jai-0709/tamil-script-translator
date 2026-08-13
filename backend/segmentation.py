@@ -767,7 +767,8 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                     continue
                     
                 tile = image_bgr[y1:y2, x1:x2]
-                results = _YOLO_MODEL(tile, conf=0.25, iou=0.55, augment=True, verbose=False)
+                with torch.inference_mode():
+                    results = _YOLO_MODEL(tile, conf=0.25, iou=0.55, augment=False, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
