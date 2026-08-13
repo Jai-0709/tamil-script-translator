@@ -234,12 +234,12 @@ def cosine_similarity(v1, v2):
 
 def apply_ugsm_auto_segmentation(model_regions: List[Dict], image: np.ndarray) -> List[Dict]:
     """
-    Universal Glyph Segmentation Memory (UGSM) Engine:
-    Examines detected character regions against global learned character vector memory (correction_memory).
-    - Auto-Merges over-segmented adjacent boxes if combined crop matches a learned character vector.
+    Universal Glyph Segmentation Memory (UGSM) & Smart Compound Glyph Fusion Engine:
+    - Auto-merges split modifier strokes (e.g. kombu + base consonant + aravu = single box)
+    - Examines merged crops against learned character vector memory (correction_memory).
     """
-    if not model_regions or not correction_memory:
-        return model_regions
+    if not model_regions:
+        return []
 
     img_h, img_w = image.shape[:2]
     result_regions = []
@@ -247,34 +247,59 @@ def apply_ugsm_auto_segmentation(model_regions: List[Dict], image: np.ndarray) -
     while i < len(model_regions):
         curr = model_regions[i]
         
-        # Check auto-merge with next adjacent box if on same line
         merged = False
         if i + 1 < len(model_regions):
             nxt = model_regions[i + 1]
             if curr.get("line", 1) == nxt.get("line", 1):
-                mx = min(curr["x"], nxt["x"])
-                my = min(curr["y"], nxt["y"])
-                mw = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"]) - mx
-                mh = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"]) - my
+                gap = nxt["x"] - (curr["x"] + curr["w"])
+                h_ref = max(curr["h"], nxt["h"])
                 
-                mcrop = image[my:min(img_h, my+mh), mx:min(img_w, mx+mw)]
-                if mcrop.size > 0:
-                    mfeat = classifier.extract_features(mcrop)
-                    if mfeat is not None:
-                        for mem in reversed(correction_memory):
-                            sim = cosine_similarity(mfeat, mem["vector"])
-                            if sim >= 0.88 and mem["modern_tamil"] != "__IGNORE__":
-                                print(f"[UGSM] Auto-merged over-segmented boxes {curr['id']}+{nxt['id']} → '{mem['modern_tamil']}' (sim={sim:.2f})")
-                                result_regions.append({
-                                    "id": curr["id"],
-                                    "x": mx, "y": my, "w": mw, "h": mh,
-                                    "line": curr.get("line", 1),
-                                    "saved_tamil": mem["modern_tamil"],
-                                    "crop": mcrop
-                                })
-                                i += 2
-                                merged = True
-                                break
+                # Check auto-merge if boxes touch or overlap (gap <= 0.20 * height)
+                if gap <= (h_ref * 0.20):
+                    mx = min(curr["x"], nxt["x"])
+                    my = min(curr["y"], nxt["y"])
+                    mw = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"]) - mx
+                    mh = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"]) - my
+                    
+                    mcrop = image[my:min(img_h, my+mh), mx:min(img_w, mx+mw)]
+                    if mcrop.size > 0:
+                        # 1. Check vector memory match
+                        if correction_memory:
+                            mfeat = classifier.extract_features(mcrop)
+                            if mfeat is not None:
+                                for mem in reversed(correction_memory):
+                                    sim = cosine_similarity(mfeat, mem["vector"])
+                                    if sim >= 0.88 and mem["modern_tamil"] != "__IGNORE__":
+                                        print(f"[UGSM] Auto-merged over-segmented boxes {curr['id']}+{nxt['id']} → '{mem['modern_tamil']}' (sim={sim:.2f})")
+                                        result_regions.append({
+                                            "id": curr.get("id", i + 1),
+                                            "x": mx, "y": my, "w": mw, "h": mh,
+                                            "line": curr.get("line", 1),
+                                            "saved_tamil": mem["modern_tamil"],
+                                            "crop": mcrop
+                                        })
+                                        i += 2
+                                        merged = True
+                                        break
+                        
+                        # 2. Check compound glyph classification confidence
+                        if not merged:
+                            cls_res = classifier.classify_crop(mcrop)
+                            if cls_res and cls_res.get("confidence", 0) > 0.60:
+                                label = cls_res.get("modern_tamil", "")
+                                # If label represents a compound glyph or valid character, merge
+                                if label and label != "?":
+                                    print(f"[COMPOUND MERGE] Fused compound stroke boxes {curr.get('id', i+1)}+{nxt.get('id', i+2)} → '{label}' (conf={cls_res['confidence']:.2f})")
+                                    result_regions.append({
+                                        "id": curr.get("id", i + 1),
+                                        "x": mx, "y": my, "w": mw, "h": mh,
+                                        "line": curr.get("line", 1),
+                                        "saved_tamil": label,
+                                        "crop": mcrop
+                                    })
+                                    i += 2
+                                    merged = True
+        
         if not merged:
             cx, cy, cw, ch = curr["x"], curr["y"], curr["w"], curr["h"]
             crop = image[cy:min(img_h, cy+ch), cx:min(img_w, cx+cw)]
@@ -370,15 +395,37 @@ def _decode_image(data: bytes) -> np.ndarray:
 
 
 def _build_sentence(words: List[WordResult]) -> str:
-    """Join modern Tamil characters into a sentence, line-break between lines."""
+    """Join modern Tamil characters into clean word-spaced sentences per line."""
     if not words:
         return ""
-    lines: dict[int, list[str]] = {}
+    lines: dict[int, list[WordResult]] = {}
     for w in words:
-        lines.setdefault(w.line, []).append(w.modern_tamil)
-    return "  ".join(
-        "".join(lines[ln]) for ln in sorted(lines)
-    )
+        lines.setdefault(w.line, []).append(w)
+    
+    line_sentences = []
+    for ln in sorted(lines):
+        line_words = sorted(lines[ln], key=lambda item: item.x)
+        if not line_words:
+            continue
+        
+        # Calculate median character width for line
+        widths = [w.w for w in line_words]
+        median_w = sorted(widths)[len(widths) // 2] if widths else 30
+        
+        chars = []
+        for i in range(len(line_words)):
+            curr = line_words[i]
+            chars.append(curr.modern_tamil)
+            if i < len(line_words) - 1:
+                nxt = line_words[i + 1]
+                gap = nxt.x - (curr.x + curr.w)
+                # If horizontal gap is larger than 1.1x median character width, insert word space
+                if gap > (median_w * 1.1):
+                    chars.append(" ")
+                    
+        line_sentences.append("".join(chars))
+        
+    return "  ".join(line_sentences)
 
 
 # ─────────────────────────────────────────────
