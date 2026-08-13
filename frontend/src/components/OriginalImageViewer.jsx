@@ -43,8 +43,10 @@ export default function OriginalImageViewer({
     const word = words.find(w => w.id === hoveredWordId)
     if (!word) return
 
-    const scaleX = width  / imageWidth
-    const scaleY = height / imageHeight
+    const natW = img.naturalWidth || imageWidth || 1
+    const natH = img.naturalHeight || imageHeight || 1
+    const scaleX = width  / natW
+    const scaleY = height / natH
 
     // Add generous padding around the character so it is never clipped
     const pad = 6
@@ -233,10 +235,8 @@ export default function OriginalImageViewer({
       <div
         style={{
           position: 'relative',
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          display: 'inline-block',
+          maxWidth: '100%',
           maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
           transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
           transformOrigin: 'top left',
@@ -246,14 +246,14 @@ export default function OriginalImageViewer({
         <img
           ref={imgRef}
           src={imageURL}
-          alt="Original inscription"
+          alt="Original Tamil inscription"
           onLoad={() => { drawSpotlight(); drawZoom() }}
           style={{
             display: 'block',
-            width: '100%',
+            maxWidth: '100%',
             maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
+            width: 'auto',
             height: 'auto',
-            objectFit: 'contain',
             borderRadius: 6,
           }}
         />
@@ -268,7 +268,7 @@ export default function OriginalImageViewer({
             top: 0, left: 0,
             width: '100%',
             height: '100%',
-            borderRadius: 8,
+            borderRadius: 6,
             cursor: words.length ? 'crosshair' : 'default',
             pointerEvents: words.length ? 'auto' : 'none',
           }}

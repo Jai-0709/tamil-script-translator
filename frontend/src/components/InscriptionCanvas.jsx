@@ -47,11 +47,12 @@ export default function InscriptionCanvas({
     const ctx = canvas.getContext('2d')
     ctx.clearRect(0, 0, width, height)
 
-    if (!localWords.length || !imageWidth || !imageHeight) return
-    if (img.naturalWidth > 0 && Math.abs(img.naturalWidth - imageWidth) > 50) return
+    if (!localWords.length) return
 
-    const scaleX = width  / imageWidth
-    const scaleY = height / imageHeight
+    const natW = img.naturalWidth || imageWidth || 1
+    const natH = img.naturalHeight || imageHeight || 1
+    const scaleX = width  / natW
+    const scaleY = height / natH
 
     for (const word of localWords) {
       const x = Math.round(word.x * scaleX)
@@ -379,10 +380,8 @@ export default function InscriptionCanvas({
       <div
         style={{
           position: 'relative',
-          width: '100%',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
+          display: 'inline-block',
+          maxWidth: '100%',
           maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
           transform: zoomLevel !== 1 ? `scale(${zoomLevel})` : 'none',
           transformOrigin: 'top left',
@@ -396,10 +395,10 @@ export default function InscriptionCanvas({
           onLoad={draw}
           style={{
             display: 'block',
-            width: '100%',
+            maxWidth: '100%',
             maxHeight: maxHeight ? `${maxHeight}px` : '50vh',
+            width: 'auto',
             height: 'auto',
-            objectFit: 'contain',
             borderRadius: 6,
           }}
         />
@@ -418,7 +417,7 @@ export default function InscriptionCanvas({
             top: 0, left: 0,
             width: '100%',
             height: '100%',
-            borderRadius: 8,
+            borderRadius: 6,
           }}
         />
       </div>
