@@ -1,11 +1,17 @@
 """
-gemini_vision.py — Gemini Multimodal Vision API for Direct Inscription Reading.
+gemini_vision.py — Hybrid Tourist Mode: YOLO/Classifier + Gemini Vision Cross-Verification.
 
-Tourist Mode: Sends the FULL inscription photograph directly to Gemini's
-multimodal vision model. Gemini reads the inscription from the raw image
-pixels — no YOLO segmentation, no classifier, no NLP beam search.
+Pipeline:
+  1. Run trained YOLO + ViT/ResNet classifier (trained on ancient Tamil) silently
+  2. Group detected characters into physical lines
+  3. Send BOTH the detected OCR text AND the original stone photo to Gemini Vision
+  4. Gemini cross-verifies the AI-detected text against the actual stone carving pixels
+  5. Returns structured line-by-line Tamil + English translations with historical context
 
-Returns structured line-by-line Tamil + English translations with historical context.
+This hybrid approach ensures:
+  - Ancient character detection uses YOUR trained models (best at ancient Tamil script)
+  - Gemini Vision cross-references detected text with the actual image for correction
+  - Zero manual intervention — tourist sees only upload + clean output
 """
 
 import os
@@ -14,7 +20,7 @@ import base64
 import urllib.request
 import urllib.error
 import re
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 # Attempt to load dotenv if available
 try:
@@ -31,60 +37,87 @@ except ImportError:
 
 def _get_api_key() -> str:
     """Return GEMINI_API_KEY from environment."""
-    return os.environ.get("GEMINI_API_KEY", "").strip()
-
-
-def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -> Optional[Dict]:
-    """
-    Send the full inscription image to Gemini's multimodal Vision API.
-    Gemini reads the inscription directly from the image pixels.
-    
-    Returns a structured dict with line-by-line breakdown, or None on failure.
-    """
-    key = _get_api_key()
-    if not key:
-        print("[GEMINI-VISION] No GEMINI_API_KEY configured.")
-        return None
-
-    # Load fresh .env values if present
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    # Also check .env file directly
     env_file = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_file):
         with open(env_file, "r", encoding="utf-8") as f:
             for line in f:
                 if line.startswith("GEMINI_API_KEY="):
                     key = line.split("=", 1)[1].strip()
+    return key
+
+
+def gemini_vision_hybrid_translate(
+    image_bytes: bytes,
+    line_groups: List[Dict],
+    mime_type: str = "image/jpeg",
+) -> Optional[Dict]:
+    """
+    Hybrid Tourist Mode translation.
+
+    Args:
+        image_bytes: Raw image file bytes (JPEG/PNG/WEBP)
+        line_groups: Pre-detected line groups from YOLO + Classifier pipeline.
+                     Each dict has: {"line": int, "text": str}
+                     e.g. [{"line": 1, "text": "ஸ்ரீராஜராஜதேவர்க்கு"}, ...]
+        mime_type: MIME type of the image
+
+    Returns:
+        Structured dict with line-by-line breakdown, or None on failure.
+    """
+    key = _get_api_key()
+    if not key:
+        print("[GEMINI-VISION] No GEMINI_API_KEY configured.")
+        return None
 
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+    # Build the OCR context from the trained model's detections
+    num_lines = len(line_groups)
+    ocr_lines_str = ""
+    if line_groups:
+        formatted = []
+        for lg in line_groups:
+            l_num = lg.get("line", 1)
+            l_txt = lg.get("text", "").strip()
+            if l_txt:
+                formatted.append(f"Line {l_num}: \"{l_txt}\"")
+        ocr_lines_str = "\n".join(formatted)
 
     system_prompt = (
         "You are an Elite Epigraphist and Computational Epigraphy AI specializing in ancient Tamil stone inscriptions (கல்வெட்டுகள்) "
         "from the Chola, Pandya, Pallava, and Vijayanagara dynasties.\n\n"
-        "TASK: Look at this photograph of an ancient Tamil stone inscription. Read EVERY line of text carved on the stone "
-        "and provide a complete, accurate translation.\n\n"
-        "CRITICAL RULES:\n"
-        "1. READ DIRECTLY FROM THE IMAGE — examine the carved characters in the stone photograph carefully.\n"
-        "2. Identify EVERY physical line of text on the stone (inscriptions are typically 3-15 lines).\n"
-        "3. For EACH line, provide:\n"
-        "   - The original ancient Tamil text (epigraphic_text) with proper word spacing\n"
-        "   - Modern Tamil translation (modern_meaning)\n"
-        "   - Fluent English translation (english_translation)\n"
-        "   - A 1-2 sentence historical/epigraphic context note (historical_note)\n"
-        "4. PRESERVE ancient gold weight metrics: கழஞ்சு (kalanju), மஞ்சாடி (manjadi), நாழி (naazhi), காசு (kasu).\n"
-        "   Do NOT confuse gold weight terms with regnal year formulas.\n"
-        "5. 'epigraphic_text' and 'full_sentence' MUST be 100% Tamil script only — NO Latin letters, NO emojis.\n"
-        "6. Provide a brief overall summary in 'overall_context' (2-3 sentences about the inscription's historical significance).\n\n"
+        "TASK: You are given TWO inputs:\n"
+        "  1. A PHOTOGRAPH of an ancient Tamil stone inscription\n"
+        "  2. An AI-detected OCR reading of the characters (from a trained ancient Tamil classifier)\n\n"
+        "The OCR reading was produced by a YOLOv8 segmentation model and a ViT classifier trained specifically "
+        "on ancient Tamil script. It may contain errors — some characters may be misread, merged, or split.\n\n"
+        "YOUR JOB:\n"
+        "  - LOOK at the stone photograph carefully to verify and correct the OCR reading\n"
+        "  - Cross-reference each detected line against what you actually see carved in the stone\n"
+        "  - Fix any OCR errors (character substitutions, missing characters, extra noise characters)\n"
+        "  - Insert proper word spacing between ancient Tamil words\n"
+        "  - Provide accurate modern Tamil and English translations\n\n"
+        "CRITICAL EPIGRAPHIC RULES:\n"
+        "1. WORD SPACING: Ancient inscriptions lack word spaces. YOU MUST insert clean spaces between words.\n"
+        "2. GOLD WEIGHTS: Preserve ancient metrics — கழஞ்சு (kalanju), மஞ்சாடி (manjadi), நாழி (naazhi), காசு (kasu). "
+        "Do NOT confuse these with regnal year formulas.\n"
+        "3. PURE TAMIL: 'epigraphic_text' and 'full_sentence' must be 100% Tamil script only — NO Latin letters, NO emojis.\n"
+        f"4. LINE COUNT: The OCR detected {num_lines} physical line(s). Verify against the image — adjust if needed.\n"
+        "5. OVERALL CONTEXT: Provide a brief historical summary (dynasty, period, temple, purpose).\n\n"
         "Return ONLY a valid JSON object in this exact format:\n"
         "{\n"
-        '  "full_sentence": "Complete Tamil text of the entire inscription with word spaces",\n'
-        '  "english_translation": "Complete English translation of the entire inscription",\n'
-        '  "overall_context": "Brief historical significance of this inscription (2-3 sentences)",\n'
-        '  "dynasty": "Detected dynasty (Chola/Pandya/Pallava/Vijayanagara/Unknown)",\n'
-        '  "estimated_period": "Estimated century/period (e.g. 10th century CE)",\n'
-        '  "line_count": 5,\n'
+        '  "full_sentence": "Complete corrected Tamil text of the entire inscription",\n'
+        '  "english_translation": "Complete English translation",\n'
+        '  "overall_context": "Brief historical significance (2-3 sentences)",\n'
+        '  "dynasty": "Chola/Pandya/Pallava/Vijayanagara/Unknown",\n'
+        '  "estimated_period": "e.g. 10th century CE",\n'
+        '  "line_count": N,\n'
         '  "line_breakdown": [\n'
         '    {\n'
         '      "line_num": 1,\n'
-        '      "epigraphic_text": "Ancient Tamil text of this line with word spacing",\n'
+        '      "epigraphic_text": "Corrected ancient Tamil text of this line",\n'
         '      "modern_meaning": "Modern Tamil translation of this line",\n'
         '      "english_translation": "English translation of this line",\n'
         '      "historical_note": "Historical context for this specific line"\n'
@@ -93,11 +126,19 @@ def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -
         "}\n"
     )
 
+    user_prompt = (
+        f"AI-Detected OCR Reading ({num_lines} lines):\n"
+        f"{ocr_lines_str}\n\n"
+        "Now look at the actual stone inscription photograph below. "
+        "Cross-verify the OCR reading against the image, fix any errors, "
+        "and provide the complete structured translation."
+    )
+
     payload = {
         "contents": [
             {
                 "parts": [
-                    {"text": system_prompt},
+                    {"text": system_prompt + "\n\n" + user_prompt},
                     {
                         "inline_data": {
                             "mime_type": mime_type,
@@ -112,7 +153,7 @@ def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -
         }
     }
 
-    # Try multiple Gemini models with vision support (ordered by preference)
+    # Try multiple Gemini models with vision support
     models_to_try = [
         "gemini-2.5-flash",
         "gemini-2.0-flash",
@@ -129,7 +170,7 @@ def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -
                 headers={"Content-Type": "application/json"},
                 method="POST"
             )
-            print(f"[GEMINI-VISION] Sending inscription image to {model_name} for direct reading...")
+            print(f"[GEMINI-VISION] Sending OCR + image to {model_name} for hybrid cross-verification...")
             with urllib.request.urlopen(req, timeout=60) as response:
                 res_data = json.loads(response.read().decode("utf-8"))
 
@@ -155,7 +196,7 @@ def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -
                         clean = re.sub(r'[a-zA-Z]', '', clean)
                         result[field] = ' '.join(clean.split()).strip()
 
-                # Validate line_breakdown exists
+                # Ensure line_breakdown exists
                 if "line_breakdown" not in result:
                     result["line_breakdown"] = [{
                         "line_num": 1,
@@ -167,12 +208,13 @@ def gemini_vision_translate(image_bytes: bytes, mime_type: str = "image/jpeg") -
 
                 result["model_used"] = model_name
 
-            print(f"[GEMINI-VISION] Successfully read inscription using {model_name}: {len(result.get('line_breakdown', []))} lines detected")
+            print(f"[GEMINI-VISION] Hybrid translation successful via {model_name}: "
+                  f"{len(result.get('line_breakdown', []))} lines")
             return result
 
         except urllib.error.HTTPError as e:
             if e.code == 429:
-                print(f"[GEMINI-VISION] Rate limit 429 on {model_name}, trying next model...")
+                print(f"[GEMINI-VISION] Rate limit 429 on {model_name}, trying next...")
                 continue
             else:
                 print(f"[GEMINI-VISION] HTTP {e.code} on {model_name}: {e.reason}")

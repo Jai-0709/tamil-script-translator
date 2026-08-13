@@ -42,7 +42,7 @@ from segmentation import segment_words, _is_stone_crack_or_blank
 import classifier
 from nlp_engine import nlp_engine
 from gemini_engine import gemini_epigraphic_refine
-from gemini_vision import gemini_vision_translate
+from gemini_vision import gemini_vision_hybrid_translate
 
 # ── Aksharamukha transliteration (optional — graceful fallback if missing) ──
 try:
@@ -400,25 +400,26 @@ async def health():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  TOURIST MODE — Gemini Vision-First Direct Inscription Reading
+#  TOURIST MODE — Hybrid: YOLO/Classifier (ancient Tamil) + Gemini Vision
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/api/tourist-translate")
 async def tourist_translate(file: UploadFile = File(...)):
     """
-    Tourist Mode endpoint.
-    Sends the FULL inscription photograph directly to Gemini's multimodal
-    Vision API. Gemini reads the carved text from the raw image pixels —
-    no YOLO segmentation, no classifier, no NLP beam search.
+    Tourist Mode endpoint — Hybrid architecture:
+      1. Runs trained YOLO + ViT/ResNet classifier (trained on ancient Tamil) silently
+      2. Groups detected characters into physical inscription lines
+      3. Sends BOTH the OCR-detected text AND the original photo to Gemini Vision
+      4. Gemini cross-verifies detected text against actual stone carving pixels
+      5. Returns clean line-by-line Tamil + English translations
 
-    Returns structured line-by-line Tamil + English translations with
-    historical context.
+    Zero manual intervention — tourist sees only upload + result.
     """
     raw = await file.read()
     if not raw:
         raise HTTPException(status_code=400, detail="Empty file uploaded.")
 
-    # Detect MIME type from file extension
+    # Detect MIME type
     fname = getattr(file, "filename", "") or ""
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "jpeg"
     mime_map = {
@@ -428,8 +429,108 @@ async def tourist_translate(file: UploadFile = File(...)):
     }
     mime_type = mime_map.get(ext, "image/jpeg")
 
+    # ── Step 1: Decode image ─────────────────────────────────────────────
+    image = _decode_image(raw)
+    img_h, img_w = image.shape[:2]
+
+    # ── Step 2: Run YOLO + Classifier silently ───────────────────────────
     try:
-        result = await asyncio.to_thread(gemini_vision_translate, raw, mime_type)
+        print("[TOURIST] Step 1/3: Running YOLO segmentation...")
+        model_regions = await asyncio.to_thread(segment_words, image, "smart", 0)
+        # Apply UGSM auto-merge/split
+        model_regions = apply_ugsm_auto_segmentation(model_regions, image)
+
+        # Extract crops
+        regions = []
+        for fr in model_regions:
+            fx, fy, fw, fh = fr["x"], fr["y"], fr["w"], fr["h"]
+            crop = image[fy:min(img_h, fy+fh), fx:min(img_w, fx+fw)]
+            if crop.size > 0:
+                fr["crop"] = crop
+                regions.append(fr)
+
+        regions.sort(key=lambda r: (r.get("line", 1), r["x"]))
+        for i, r in enumerate(regions):
+            r["id"] = i + 1
+
+        if len(regions) == 0:
+            regions = [{"id": 1, "x": 0, "y": 0, "w": img_w, "h": img_h, "line": 1, "crop": image}]
+
+        print(f"[TOURIST] Step 1/3: Segmented {len(regions)} character regions.")
+    except Exception as e:
+        print(f"[TOURIST] Segmentation failed: {e}")
+        regions = [{"id": 1, "x": 0, "y": 0, "w": img_w, "h": img_h, "line": 1, "crop": image}]
+
+    # ── Step 3: Classify all crops ───────────────────────────────────────
+    try:
+        print("[TOURIST] Step 2/3: Classifying characters...")
+        crops = [r["crop"] for r in regions]
+        results = classifier.classify_batch(crops)
+
+        # Apply memory overrides
+        for i, r in enumerate(regions):
+            features = results[i].get("features", [])
+            best_mem_char = None
+            best_sim = 0.0
+            if features:
+                for mem in reversed(correction_memory):
+                    sim = cosine_similarity(features, mem["vector"])
+                    if sim >= 0.86:
+                        c_val = mem["modern_tamil"]
+                        if c_val == "__IGNORE__":
+                            results[i]["is_ignored"] = True
+                            break
+                        if sim > best_sim:
+                            best_sim = sim
+                            best_mem_char = c_val
+            if best_mem_char and not results[i].get("is_ignored"):
+                results[i]["modern_tamil"] = best_mem_char
+
+        # Filter ignored boxes
+        valid_indices = [
+            i for i in range(len(regions))
+            if not results[i].get("is_ignored") and results[i]["confidence"] >= 0.02
+        ]
+        if valid_indices:
+            regions = [regions[i] for i in valid_indices]
+            results = [results[i] for i in valid_indices]
+
+        print(f"[TOURIST] Step 2/3: Classified {len(results)} characters.")
+    except Exception as e:
+        print(f"[TOURIST] Classification failed: {e}")
+        results = []
+
+    # ── Step 4: Group characters into lines ──────────────────────────────
+    line_map = {}
+    for i, r in enumerate(regions):
+        l_num = r.get("line", 1)
+        if l_num not in line_map:
+            line_map[l_num] = []
+        char = results[i]["modern_tamil"] if i < len(results) else "?"
+        raw_c = str(char).split(",")[0].strip() if "," in str(char) else str(char)
+        if raw_c and raw_c != "?":
+            line_map[l_num].append(raw_c)
+
+    line_groups = []
+    for l_num in sorted(line_map.keys()):
+        line_groups.append({
+            "line": l_num,
+            "text": "".join(line_map[l_num])
+        })
+
+    if not line_groups:
+        line_groups = [{"line": 1, "text": ""}]
+
+    print(f"[TOURIST] Detected {len(line_groups)} lines: " +
+          ", ".join([f"L{lg['line']}: '{lg['text'][:30]}...'" for lg in line_groups]))
+
+    # ── Step 5: Send OCR results + image to Gemini Vision ────────────────
+    try:
+        print("[TOURIST] Step 3/3: Sending to Gemini Vision for hybrid cross-verification...")
+        from gemini_vision import gemini_vision_hybrid_translate
+        result = await asyncio.to_thread(
+            gemini_vision_hybrid_translate, raw, line_groups, mime_type
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gemini Vision error: {e}")
 
@@ -438,6 +539,10 @@ async def tourist_translate(file: UploadFile = File(...)):
             status_code=503,
             detail="Gemini Vision API is unavailable or rate-limited. Please try again in a few seconds."
         )
+
+    # Inject OCR metadata for transparency
+    result["ocr_line_groups"] = line_groups
+    result["ocr_char_count"] = sum(len(lg["text"]) for lg in line_groups)
 
     return result
 

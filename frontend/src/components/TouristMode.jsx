@@ -397,10 +397,10 @@ export default function TouristMode() {
                 animation: 'spin 0.8s linear infinite',
               }} />
               <p style={{ fontSize: 14, color: 'var(--fg-3)', fontWeight: 500 }}>
-                Gemini AI is reading the inscription...
+                Reading inscription...
               </p>
-              <p style={{ fontSize: 12, color: 'var(--fg-4)' }}>
-                This may take 5-15 seconds
+              <p style={{ fontSize: 12, color: 'var(--fg-4)', lineHeight: 1.6, textAlign: 'center', maxWidth: 320 }}>
+                Step 1: YOLO character detection → Step 2: Ancient Tamil classification → Step 3: Gemini AI cross-verification
               </p>
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
