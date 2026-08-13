@@ -482,11 +482,11 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
     else:
         # stone_colour and fallbacks
         # NOTE: keep k_w/k_h SMALL -- large dilation merges adjacent characters!
-        k_w = 2
-        k_h = 2
-        min_w  = max(18, img_w // 45)
-        min_h  = max(20, img_h // 22)
-        min_area = int(min_w * min_h * 0.8)
+        k_w = 1
+        k_h = 1
+        min_w  = max(6, img_w // 120)
+        min_h  = max(12, img_h // 40)
+        min_area = min_w * min_h
         max_w  = int(img_w * 0.30)
         max_h  = int(img_h * 0.50)
         border = max(4, int(min(img_w, img_h) * 0.003))
@@ -847,10 +847,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                 if w_work < 8 or h_work < 8:
                     continue
                     
-                # Reject extreme aspect ratios (cracks and scratches in the stone)
+                # Allow narrow single-stroke characters (min aspect ratio = 0.08, max = 5.0)
                 aspect_ratio = w_work / h_work
-                if aspect_ratio > 4.5 or aspect_ratio < 0.35:
-                    print(f"[SEG] Rejecting YOLO box with extreme aspect ratio (crack): w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
+                if aspect_ratio > 5.0 or aspect_ratio < 0.08:
+                    print(f"[SEG] Rejecting YOLO box with extreme aspect ratio: w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
                     continue
                 
                 # YOLO already perfectly bounds the whole character
@@ -888,10 +888,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                         continue
 
                     # Stone Crack / Fissure Suppressor:
-                    # Only reject extremely thin vertical cracks (w < 20% of median character width AND aspect ratio < 0.15)
+                    # Only reject absurdly thin 1-pixel cracks (aspect ratio < 0.05 AND w < 4px)
                     asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
-                    if asp < 0.15 and r["w"] < (char_w_est * 0.20):
-                        print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
+                    if asp < 0.05 and r["w"] < 4:
+                        print(f"[SEG] Rejecting 1px vertical crack: w={r['w']}, h={r['h']}, ar={asp:.2f}")
                         continue
 
                     # Physical Stroke & Contour Density Verification:
