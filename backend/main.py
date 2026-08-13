@@ -42,6 +42,7 @@ from segmentation import segment_words, _is_stone_crack_or_blank
 import classifier
 from nlp_engine import nlp_engine
 from gemini_engine import gemini_epigraphic_refine
+from gemini_vision import gemini_vision_translate
 
 # ── Aksharamukha transliteration (optional — graceful fallback if missing) ──
 try:
@@ -397,6 +398,48 @@ async def health():
         "classes":      num_classes,
     }
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  TOURIST MODE — Gemini Vision-First Direct Inscription Reading
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/api/tourist-translate")
+async def tourist_translate(file: UploadFile = File(...)):
+    """
+    Tourist Mode endpoint.
+    Sends the FULL inscription photograph directly to Gemini's multimodal
+    Vision API. Gemini reads the carved text from the raw image pixels —
+    no YOLO segmentation, no classifier, no NLP beam search.
+
+    Returns structured line-by-line Tamil + English translations with
+    historical context.
+    """
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty file uploaded.")
+
+    # Detect MIME type from file extension
+    fname = getattr(file, "filename", "") or ""
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "jpeg"
+    mime_map = {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png", "webp": "image/webp",
+        "bmp": "image/bmp", "tiff": "image/tiff", "tif": "image/tiff",
+    }
+    mime_type = mime_map.get(ext, "image/jpeg")
+
+    try:
+        result = await asyncio.to_thread(gemini_vision_translate, raw, mime_type)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini Vision error: {e}")
+
+    if not result:
+        raise HTTPException(
+            status_code=503,
+            detail="Gemini Vision API is unavailable or rate-limited. Please try again in a few seconds."
+        )
+
+    return result
 
 @app.post("/translate", response_model=TranslateResponse)
 async def translate(

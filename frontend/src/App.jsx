@@ -12,6 +12,7 @@ import LoadingOverlay from './components/LoadingOverlay'
 import CorrectionPopover from './components/CorrectionPopover'
 import DatasetStudio from './pages/DatasetStudio'
 import MemoryStudio from './pages/MemoryStudio'
+import TouristMode from './components/TouristMode'
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -983,6 +984,8 @@ function generateAlternativeSentences(wordList = [], corrMap = {}) {
 
       {activePage === 'landing' ? (
         <LandingPage onLaunchWorkspace={() => setActivePage('translator')} />
+      ) : activePage === 'tourist' ? (
+        <div style={{ flex: 1, paddingTop: 52 }}><TouristMode /></div>
       ) : activePage === 'memory' ? (
         <div style={{ flex: 1, paddingTop: 52 }}><MemoryStudio /></div>
       ) : activePage === 'dataset' ? (

@@ -14,6 +14,7 @@ export default function Navbar({ activePage, setActivePage, theme = 'dark', onTo
 
   const navLinks = [
     ['landing',    'Overview'],
+    ['tourist',    'Tourist Mode'],
     ['translator', 'Workspace'],
     ['dataset',    'Dataset'],
     ['memory',     'Memory'],
