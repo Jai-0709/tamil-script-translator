@@ -482,11 +482,11 @@ def _filter_params(img_w: int, img_h: int, img_type: str) -> dict:
     else:
         # stone_colour and fallbacks
         # NOTE: keep k_w/k_h SMALL -- large dilation merges adjacent characters!
-        k_w = 1
-        k_h = 1
-        min_w  = max(6, img_w // 120)
-        min_h  = max(12, img_h // 40)
-        min_area = min_w * min_h
+        k_w = 2
+        k_h = 2
+        min_w  = max(18, img_w // 45)
+        min_h  = max(20, img_h // 22)
+        min_area = int(min_w * min_h * 0.8)
         max_w  = int(img_w * 0.30)
         max_h  = int(img_h * 0.50)
         border = max(4, int(min(img_w, img_h) * 0.003))
@@ -627,13 +627,99 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
 
 
 # ---------------------------------------------
+#  Per-Line Band Detection Helper
+# ---------------------------------------------
+
+def _find_line_bands(image_bgr: np.ndarray, min_band_h: int = 30) -> List[Tuple[int, int]]:
+    """
+    Use horizontal projection profiling to find Y-boundaries between inscription lines.
+
+    Returns a list of (y_start, y_end) tuples — one per detected line band —
+    in top-to-bottom order.  Fast: runs in <10ms on a 2000px-wide image.
+
+    Strategy
+    --------
+    1. Convert to grayscale & apply Otsu threshold to isolate ink pixels.
+    2. Compute the per-row sum of foreground pixels (horizontal projection).
+    3. Smooth the projection to remove noise.
+    4. Classify rows as "text" (sum > threshold) or "gap" (sum <= threshold).
+    5. Merge consecutive text rows into bands; merge bands that are very close.
+    """
+    h, w = image_bgr.shape[:2]
+    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+
+    # Adaptive binarization: works on both bright-ink-on-stone and dark-ink documents
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    # Horizontal projection: count foreground pixels per row
+    row_sums = np.sum(binary > 0, axis=1).astype(np.float32)  # shape: (h,)
+
+    # Smooth to eliminate single-row noise spikes
+    kernel_size = max(3, h // 60)
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    row_sums_smooth = cv2.GaussianBlur(
+        row_sums.reshape(-1, 1), (1, kernel_size), 0
+    ).flatten()
+
+    # Threshold: a row is considered a "text row" if it has enough ink pixels
+    # Use 3% of image width as minimum ink density
+    ink_thresh = max(2.0, w * 0.03)
+    is_text_row = row_sums_smooth > ink_thresh
+
+    # Find contiguous text bands
+    bands: List[Tuple[int, int]] = []
+    in_band = False
+    band_start = 0
+    for row_idx in range(h):
+        if is_text_row[row_idx] and not in_band:
+            in_band = True
+            band_start = row_idx
+        elif not is_text_row[row_idx] and in_band:
+            in_band = False
+            band_end = row_idx
+            if (band_end - band_start) >= min_band_h:
+                bands.append((band_start, band_end))
+    if in_band:
+        band_end = h
+        if (band_end - band_start) >= min_band_h:
+            bands.append((band_start, band_end))
+
+    if not bands:
+        # No clear bands found — treat the whole image as one band
+        return [(0, h)]
+
+    # Merge bands that are very close together (gap < 15% of average band height)
+    avg_band_h = sum(b[1] - b[0] for b in bands) / len(bands)
+    min_gap = max(8, int(avg_band_h * 0.15))
+    merged: List[Tuple[int, int]] = [bands[0]]
+    for y_start, y_end in bands[1:]:
+        prev_start, prev_end = merged[-1]
+        if (y_start - prev_end) <= min_gap:
+            merged[-1] = (prev_start, y_end)
+        else:
+            merged.append((y_start, y_end))
+
+    print(f"[SEG-LINES] Detected {len(merged)} inscription line bands via projection profiling.")
+    return merged
+
+
+# ---------------------------------------------
 #  Public API
 # ---------------------------------------------
 
 def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int = 4) -> List[Dict]:
     """
     Segment an inscription image into character-level bounding boxes.
-    Supports Option 3 Automatic Multi-Strip Assembly for ultra-wide crops.
+
+    Routing logic (in priority order):
+      Option 3 — Ultra-wide crops (aspect > 3.0): Horizontal strip assembly.
+      Option 4 — Multi-line full images (height >= 300px, 2+ lines detected):
+                  Per-Line Assembly Engine — slices each text row into its own
+                  strip, upscales via MIN_WORK_H=450 so YOLO sees characters at
+                  its trained scale (~200px tall), then remaps coordinates back.
+      Fallback  — Short/single-line images: Direct _segment_words_core call.
     """
     if image_bgr is None or image_bgr.size == 0:
         return []
@@ -694,7 +780,98 @@ def segment_words(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x: int =
             
         print(f"[SEG-STRIP] Stitched {len(merged_strip_regions)} clean character regions across multi-strip assembly.")
         return merged_strip_regions
+
+    # =========================================================================
+    # Option 4: Per-Line Assembly Engine for Multi-Line Full Inscription Images
+    # =========================================================================
+    # Triggers when: image has multiple text lines (height >= 300px) AND aspect
+    # ratio < 3.0 (not already handled by Option 3 wide-strip mode).
+    #
+    # Problem: When a full multi-line inscription (e.g. 800×600px, 6 lines) is
+    # fed directly to _segment_words_core, each YOLO 1280px tile spans 2–4 lines.
+    # Characters appear ~70–90px tall — far below YOLO's trained scale (~200px).
+    # Result: misses, merges between adjacent characters, poor segmentation.
+    #
+    # Solution: Use horizontal projection profiling to find per-line Y-bands,
+    # extract each band as a separate strip, run _segment_words_core on each
+    # strip individually (MIN_WORK_H=450 upscales each strip so chars are
+    # ~200px tall — identical to what the user's "Crop Region" tool does), then
+    # remap coordinates back to the full image and NMS-merge duplicates.
+    elif orig_h >= 300:
+        # Detect how many distinct text lines exist in this image
+        line_bands = _find_line_bands(image_bgr, min_band_h=max(20, orig_h // 20))
+        n_lines = len(line_bands)
+
+        # Only activate the per-line engine when there are 2+ detected lines
+        # AND the per-line height would benefit from MIN_WORK_H upscaling
+        # (i.e. each line strip height < 420px after projection detection)
+        avg_strip_h = sum(b[1] - b[0] for b in line_bands) / max(1, n_lines)
+
+        if n_lines >= 2 and avg_strip_h < 420:
+            print(f"[SEG-LINES] Activating Per-Line Assembly Engine: {n_lines} lines detected, "
+                  f"avg strip height={avg_strip_h:.0f}px. "
+                  "Running _segment_words_core per-line strip...")
+
+            # Add vertical padding around each band so edge characters are not clipped
+            pad_y = max(8, int(avg_strip_h * 0.12))
+
+            all_line_regions: List[Dict] = []
+            for band_idx, (y_start, y_end) in enumerate(line_bands):
+                # Expand the strip vertically with clamped padding
+                strip_y1 = max(0, y_start - pad_y)
+                strip_y2 = min(orig_h, y_end + pad_y)
+                strip = image_bgr[strip_y1:strip_y2, :]
+
+                print(f"[SEG-LINES] Processing line {band_idx + 1}/{n_lines}: "
+                      f"y={strip_y1}–{strip_y2} ({strip_y2 - strip_y1}px tall)")
+
+                strip_regions = _segment_words_core(strip, mode=mode, merge_gap_x=merge_gap_x)
+
+                # Remap Y coordinates back to the full image space
+                for r in strip_regions:
+                    r_copy = dict(r)
+                    r_copy["y"] += strip_y1
+                    all_line_regions.append(r_copy)
+
+            if not all_line_regions:
+                print("[SEG-LINES] Per-Line engine returned no regions, falling back to direct _segment_words_core.")
+                return _segment_words_core(image_bgr, mode=mode, merge_gap_x=merge_gap_x)
+
+            # IoU-NMS to remove duplicates caused by overlapping padding between strips
+            merged_line_regions: List[Dict] = []
+            all_line_regions.sort(key=lambda r: (r["y"], r["x"]))
+            for r in all_line_regions:
+                rx, ry, rw, rh = r["x"], r["y"], r["w"], r["h"]
+                duplicate = False
+                for kept in merged_line_regions:
+                    kx, ky, kw, kh = kept["x"], kept["y"], kept["w"], kept["h"]
+                    ix1, iy1 = max(rx, kx), max(ry, ky)
+                    ix2, iy2 = min(rx + rw, kx + kw), min(ry + rh, ky + kh)
+                    if ix1 < ix2 and iy1 < iy2:
+                        inter = (ix2 - ix1) * (iy2 - iy1)
+                        min_area = min(rw * rh, kw * kh)
+                        if inter > 0.45 * min_area:
+                            duplicate = True
+                            break
+                if not duplicate:
+                    merged_line_regions.append(r)
+
+            # Re-assign sequential IDs
+            for idx, r in enumerate(merged_line_regions):
+                r["id"] = idx + 1
+
+            print(f"[SEG-LINES] Per-Line Assembly complete: {len(merged_line_regions)} character regions "
+                  f"assembled from {n_lines} strips.")
+            return merged_line_regions
+
+        else:
+            # Single-line image or strips already tall enough — use core directly
+            print(f"[SEG-LINES] Image has {n_lines} line(s), avg_strip_h={avg_strip_h:.0f}px. "
+                  "Using direct _segment_words_core.")
+            return _segment_words_core(image_bgr, mode=mode, merge_gap_x=merge_gap_x)
+
     else:
+        # Short image (< 300px tall) — single-line, use core directly
         return _segment_words_core(image_bgr, mode=mode, merge_gap_x=merge_gap_x)
 
 
@@ -847,10 +1024,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                 if w_work < 8 or h_work < 8:
                     continue
                     
-                # Allow narrow single-stroke characters (min aspect ratio = 0.08, max = 5.0)
+                # Reject extreme aspect ratios (cracks and scratches in the stone)
                 aspect_ratio = w_work / h_work
-                if aspect_ratio > 5.0 or aspect_ratio < 0.08:
-                    print(f"[SEG] Rejecting YOLO box with extreme aspect ratio: w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
+                if aspect_ratio > 4.5 or aspect_ratio < 0.35:
+                    print(f"[SEG] Rejecting YOLO box with extreme aspect ratio (crack): w={w_work}, h={h_work}, ar={aspect_ratio:.2f}")
                     continue
                 
                 # YOLO already perfectly bounds the whole character
@@ -888,10 +1065,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                         continue
 
                     # Stone Crack / Fissure Suppressor:
-                    # Only reject absurdly thin 1-pixel cracks (aspect ratio < 0.05 AND w < 4px)
+                    # Only reject extremely thin vertical cracks (w < 20% of median character width AND aspect ratio < 0.15)
                     asp = r["w"] / r["h"] if r["h"] > 0 else 1.0
-                    if asp < 0.05 and r["w"] < 4:
-                        print(f"[SEG] Rejecting 1px vertical crack: w={r['w']}, h={r['h']}, ar={asp:.2f}")
+                    if asp < 0.15 and r["w"] < (char_w_est * 0.20):
+                        print(f"[SEG] Rejecting vertical stone crack: w={r['w']}, h={r['h']}, ar={asp:.2f} (median_w={char_w_est})")
                         continue
 
                     # Physical Stroke & Contour Density Verification:
