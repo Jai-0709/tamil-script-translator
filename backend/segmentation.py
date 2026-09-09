@@ -639,52 +639,67 @@ def _find_line_bands(image_bgr: np.ndarray, min_band_h: int = 30) -> List[Tuple[
 
     Strategy
     --------
-    1. Convert to grayscale & apply Otsu threshold to isolate ink pixels.
-    2. Compute the per-row sum of foreground pixels (horizontal projection).
-    3. Smooth the projection to remove noise.
-    4. Classify rows as "text" (sum > threshold) or "gap" (sum <= threshold).
-    5. Merge consecutive text rows into bands; merge bands that are very close.
+    1. Convert to grayscale & apply CLAHE enhancement for stone contrast.
+    2. Try BOTH Otsu polarities (BINARY_INV and BINARY) — stone images
+       can have either light-on-dark or dark-on-light carving depending
+       on lighting conditions. Pick whichever polarity yields more line bands.
+    3. Compute the per-row sum of foreground pixels (horizontal projection).
+    4. Smooth the projection to remove noise.
+    5. Classify rows as "text" (sum > threshold) or "gap" (sum <= threshold).
+    6. Merge consecutive text rows into bands; merge bands that are very close.
     """
     h, w = image_bgr.shape[:2]
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
 
-    # Adaptive binarization: works on both bright-ink-on-stone and dark-ink documents
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, binary = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # CLAHE enhancement: equalizes contrast on stone textures without blowing out highlights
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blurred = cv2.GaussianBlur(enhanced, (5, 5), 0)
 
-    # Horizontal projection: count foreground pixels per row
-    row_sums = np.sum(binary > 0, axis=1).astype(np.float32)  # shape: (h,)
-
-    # Smooth to eliminate single-row noise spikes
+    # Smoothing kernel for projection profiles
     kernel_size = max(3, h // 60)
     if kernel_size % 2 == 0:
         kernel_size += 1
-    row_sums_smooth = cv2.GaussianBlur(
-        row_sums.reshape(-1, 1), (1, kernel_size), 0
-    ).flatten()
-
-    # Threshold: a row is considered a "text row" if it has enough ink pixels
-    # Use 3% of image width as minimum ink density
     ink_thresh = max(2.0, w * 0.03)
-    is_text_row = row_sums_smooth > ink_thresh
 
-    # Find contiguous text bands
-    bands: List[Tuple[int, int]] = []
-    in_band = False
-    band_start = 0
-    for row_idx in range(h):
-        if is_text_row[row_idx] and not in_band:
-            in_band = True
-            band_start = row_idx
-        elif not is_text_row[row_idx] and in_band:
-            in_band = False
-            band_end = row_idx
+    def _compute_bands_from_binary(binary: np.ndarray) -> List[Tuple[int, int]]:
+        """Extract text bands from a binary image via horizontal projection."""
+        row_sums = np.sum(binary > 0, axis=1).astype(np.float32)
+        row_sums_smooth = cv2.GaussianBlur(
+            row_sums.reshape(-1, 1), (1, kernel_size), 0
+        ).flatten()
+        is_text_row = row_sums_smooth > ink_thresh
+
+        bands_local: List[Tuple[int, int]] = []
+        in_band = False
+        band_start = 0
+        for row_idx in range(h):
+            if is_text_row[row_idx] and not in_band:
+                in_band = True
+                band_start = row_idx
+            elif not is_text_row[row_idx] and in_band:
+                in_band = False
+                band_end = row_idx
+                if (band_end - band_start) >= min_band_h:
+                    bands_local.append((band_start, band_end))
+        if in_band:
+            band_end = h
             if (band_end - band_start) >= min_band_h:
-                bands.append((band_start, band_end))
-    if in_band:
-        band_end = h
-        if (band_end - band_start) >= min_band_h:
-            bands.append((band_start, band_end))
+                bands_local.append((band_start, band_end))
+        return bands_local
+
+    # Try BOTH polarities — critical for stone images where Otsu may guess wrong
+    best_bands: List[Tuple[int, int]] = []
+    best_polarity = "none"
+    for polarity_name, thresh_type in [("INV", cv2.THRESH_BINARY_INV), ("NORMAL", cv2.THRESH_BINARY)]:
+        _, binary = cv2.threshold(blurred, 0, 255, thresh_type + cv2.THRESH_OTSU)
+        candidate_bands = _compute_bands_from_binary(binary)
+        if len(candidate_bands) > len(best_bands):
+            best_bands = candidate_bands
+            best_polarity = polarity_name
+
+    print(f"[SEG-LINES] Polarity scan: best={best_polarity} with {len(best_bands)} raw bands.")
+    bands = best_bands
 
     if not bands:
         # No clear bands found — treat the whole image as one band
@@ -701,7 +716,7 @@ def _find_line_bands(image_bgr: np.ndarray, min_band_h: int = 30) -> List[Tuple[
         else:
             merged.append((y_start, y_end))
 
-    print(f"[SEG-LINES] Detected {len(merged)} inscription line bands via projection profiling.")
+    print(f"[SEG-LINES] Detected {len(merged)} inscription line bands via dual-polarity projection profiling.")
     return merged
 
 
@@ -923,14 +938,17 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
         yolo_boxes = []
         yolo_scores = []
         
-        TILE_SIZE = 1280
-        # For wide horizontal crops, use dense 75% overlap (OVERLAP = 960px, STEP = 320px)
-        # so every single character appears near the center of at least 3 separate tiles!
-        if w > 1600 or (w / max(1, h)) > 4.0:
-            OVERLAP = 960
-            print(f"[SEG] Wide crop detected ({w}x{h}). Using Dense 75% Sliding Window (OVERLAP=960px, STEP=320px)...")
+        # TILE_SIZE = 640 matches YOLO's trained imgsz=640 exactly.
+        # Running inference at the same resolution the model was trained on
+        # ensures anchor boxes and receptive fields align with learned features.
+        TILE_SIZE = 640
+        # For wide horizontal crops, use dense 75% overlap so every character
+        # appears near the center of at least 2–3 separate tiles.
+        if w > 1200 or (w / max(1, h)) > 4.0:
+            OVERLAP = int(TILE_SIZE * 0.75)   # 480px overlap, 160px step
+            print(f"[SEG] Wide crop detected ({w}x{h}). Using Dense 75% Sliding Window (OVERLAP={OVERLAP}px)...")
         else:
-            OVERLAP = 640
+            OVERLAP = int(TILE_SIZE * 0.50)   # 320px overlap, 320px step
 
         # Sliced Inference (just like training data!)
         print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles with {OVERLAP}px overlap...")
@@ -946,7 +964,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                     
                 tile = image_bgr[y1:y2, x1:x2]
                 with torch.inference_mode():
-                    results = _YOLO_MODEL(tile, conf=0.25, iou=0.55, augment=False, verbose=False)
+                    # Confidence Cascade: use low conf=0.15 to catch faint/eroded characters.
+                    # False positives are eliminated downstream by the 247-class classifier
+                    # verification + stone crack/blank elimination filters.
+                    results = _YOLO_MODEL(tile, conf=0.15, iou=0.55, augment=False, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
@@ -963,8 +984,18 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
             if y2 >= h: break
 
         # Apply NMS to remove duplicates across overlapping slices
+        # Adaptive NMS: dense inscriptions (many small chars) → tighter NMS
+        #               sparse inscriptions → looser NMS to preserve compounds
         if len(yolo_boxes) > 0:
-            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.25, nms_threshold=0.55)
+            char_density = len(yolo_boxes) / max(1, (w * h)) * 1e6
+            if char_density > 50:
+                adaptive_nms = 0.40   # Dense: tighter NMS prevents merges
+            elif char_density > 20:
+                adaptive_nms = 0.50   # Medium density
+            else:
+                adaptive_nms = 0.60   # Sparse: preserve compound glyphs
+            print(f"[SEG] Adaptive NMS: density={char_density:.1f} chars/Mpx → nms_thresh={adaptive_nms}")
+            indices = cv2.dnn.NMSBoxes(yolo_boxes, yolo_scores, score_threshold=0.15, nms_threshold=adaptive_nms)
             if len(indices) > 0:
                 indices = indices.flatten()
                 
