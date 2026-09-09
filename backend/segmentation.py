@@ -1109,15 +1109,15 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                         print(f"[SEG] Rejecting crack/blank box at x={r['x']}, y={r['y']}")
                         continue
 
-                    # Reject partial edge slivers near extreme top edge (only if abnormally thin, < 25% height)
-                    is_top_margin = r["y"] <= max(4, int(work_h * 0.03))
-                    if is_top_margin and r["h"] < (char_h_est * 0.25):
-                        print(f"[SEG] Rejecting top margin sliver: y={r['y']}, h={r['h']} (median_h={char_h_est})")
+                    # Reject top margin hallucination boxes near extreme top edge (y <= 5px or y <= 5% height)
+                    is_top_margin = r["y"] <= max(6, int(work_h * 0.05))
+                    if is_top_margin and r["h"] < (char_h_est * 0.70):
+                        print(f"[SEG] Rejecting top margin hallucination box: y={r['y']}, h={r['h']} (median_h={char_h_est})")
                         continue
 
-                    # Absolute noise check: remove stray floating specks (< 35% char height or < 25% char width)
-                    if r["h"] < max(16, int(char_h_est * 0.35)) or r["w"] < max(10, int(char_w_est * 0.25)):
-                        print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']} (median_h={char_h_est})")
+                    # Absolute noise check
+                    if r["h"] < 12 or r["w"] < 8:
+                        print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']}")
                         continue
                         
                     filtered_regions.append(r)
@@ -1293,49 +1293,10 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
     if surviving_regions:
         regions = surviving_regions
 
-    # -- STEP 10.8: Anti-Merge Engine (Vertical Projection Valley Splitter) ----
-    # When two characters touch on stone or in low resolution, YOLO or OpenCV draws
-    # one wide box spanning both. We find the vertical ink valley and split them.
-    split_regions = []
-    for r in regions:
-        bw, bh = r["w"], r["h"]
-        asp = bw / float(max(1, bh))
-        if (asp > 1.30 or bw > int(char_w_est * 1.38)) and bw > 24:
-            crop_g = gray[r["y"]:r["y"]+bh, r["x"]:r["x"]+bw]
-            if crop_g.size > 0:
-                clahe_split = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-                enh_split = clahe_split.apply(crop_g)
-                _, bin_inv = cv2.threshold(enh_split, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                col_sums = np.sum(bin_inv > 0, axis=0).astype(np.float32)
-                col_smooth = cv2.GaussianBlur(col_sums.reshape(1, -1), (5, 1), 0).flatten()
-                
-                s_start = int(bw * 0.32)
-                s_end = int(bw * 0.68)
-                if s_end > s_start:
-                    val_idx = int(np.argmin(col_smooth[s_start:s_end]))
-                    split_pt = s_start + val_idx
-                    l_peak = float(np.max(col_smooth[:split_pt])) if split_pt > 0 else 1.0
-                    r_peak = float(np.max(col_smooth[split_pt:])) if split_pt < bw else 1.0
-                    val_v = float(col_smooth[split_pt])
-                    
-                    if val_v <= 0.65 * min(l_peak, r_peak) and split_pt >= 10 and (bw - split_pt) >= 10:
-                        b1 = dict(r)
-                        b1["w"] = split_pt
-                        b2 = dict(r)
-                        b2["x"] = r["x"] + split_pt
-                        b2["w"] = bw - split_pt
-                        print(f"[SEG-SPLIT] Separated merged box at x={r['x']}: w={bw} -> {b1['w']}+{b2['w']}")
-                        split_regions.extend([b1, b2])
-                        continue
-        split_regions.append(r)
-    regions = split_regions
-
-    # -- STEP 11: Sort by line then x + Anti-Split Sub-Glyph Fragment Fusion ───
+    # -- STEP 11: Sort by line then x + Merge adjacent touching compound glyphs ──
     regions.sort(key=lambda r: (r["line"], r["x"]))
     
-    # Strictly merge ONLY if one of the boxes is an incomplete sub-glyph fragment
-    # (e.g. detached kombu 'ெ' or modifier loop < 45% median width)
-    # NEVER merge two already full-sized adjacent characters!
+    # Merge adjacent touching or overlapping boxes on the same line (e.g., kombu + consonant + aravu = single compound letter)
     merged_regions = []
     i = 0
     while i < len(regions):
@@ -1345,24 +1306,20 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
             if curr.get("line", 1) == nxt.get("line", 1):
                 curr_right = curr["x"] + curr["w"]
                 nxt_left = nxt["x"]
-                gap_x = nxt_left - curr_right
-                
-                # Check if one of them is an incomplete fragment
-                is_fragment = (curr["w"] < int(char_w_est * 0.48)) or (nxt["w"] < int(char_w_est * 0.48))
-                
-                mx1 = min(curr["x"], nxt["x"])
-                my1 = min(curr["y"], nxt["y"])
-                mx2 = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"])
-                my2 = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"])
-                merged_w = mx2 - mx1
-                merged_h = my2 - my1
-                
-                # Only fuse if one is a fragment, gap is small (<= 6px), and combined width is a normal single letter
-                if is_fragment and gap_x <= max(5, int(char_w_est * 0.15)) and merged_w <= int(char_w_est * 1.30):
-                    curr = {"x": mx1, "y": my1, "w": merged_w, "h": merged_h, "line": curr.get("line", 1)}
-                    i += 1
-                    print(f"[SEG-FUSE] Fused sub-glyph fragment into complete character: w={merged_w}")
-                    continue
+                # If adjacent boxes touch or overlap (gap <= merge_gap_x)
+                if curr_right >= (nxt_left - max(4, merge_gap_x)):
+                    mx1 = min(curr["x"], nxt["x"])
+                    my1 = min(curr["y"], nxt["y"])
+                    mx2 = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"])
+                    my2 = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"])
+                    merged_w = mx2 - mx1
+                    merged_h = my2 - my1
+                    # Merge if resulting box is within valid compound Tamil character width
+                    if merged_w <= int(char_w_est * 2.2):
+                        curr = {"x": mx1, "y": my1, "w": merged_w, "h": merged_h, "line": curr.get("line", 1)}
+                        i += 1
+                        print(f"[SEG] Merged adjacent compound Tamil glyphs into single box: w={merged_w}")
+                        continue
             break
         merged_regions.append(curr)
         i += 1
@@ -1372,7 +1329,7 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
     for i, r in enumerate(regions):
         r["_id"] = i + 1
 
-    # -- STEP 12: Build output + debug visualisation with 5% Adaptive Padding --
+    # -- STEP 12: Build output + debug visualisation ---------------------------
     LINE_COLORS = [
         (0,   0,   255), (0,   200,   0), (255,   0,   0),
         (0,   200, 200), (200,   0, 200), (0,   165, 255),
@@ -1393,24 +1350,18 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
         ow = int(rw * sx)
         oh = int(rh * sy)
 
-        # 5% adaptive breathing margin so character top loops and curved terminals are never clipped
-        pad_x = max(2, int(ow * 0.05))
-        pad_y = max(3, int(oh * 0.06))
-
-        x1 = max(0, ox - pad_x)
-        y1 = max(0, oy - pad_y)
-        x2 = min(orig_w, ox + ow + pad_x)
-        y2 = min(orig_h, oy + oh + pad_y)
-        final_w = x2 - x1
-        final_h = y2 - y1
+        x1 = max(0, ox)
+        y1 = max(0, oy)
+        x2 = min(orig_w, ox + ow)
+        y2 = min(orig_h, oy + oh)
         crop = orig[y1:y2, x1:x2]
 
         output.append({
             "id":   rid,
-            "x":    x1,
-            "y":    y1,
-            "w":    final_w,
-            "h":    final_h,
+            "x":    ox,
+            "y":    oy,
+            "w":    ow,
+            "h":    oh,
             "line": r["line"],
             "crop": crop,
         })
