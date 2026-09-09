@@ -627,175 +627,6 @@ def _recover_unsegmented_gaps(regions: List[Dict], gray: np.ndarray, char_w_est:
 
 
 # ---------------------------------------------
-#  Anti-Merge & Anti-Split Precision Engines
-# ---------------------------------------------
-
-def _split_merged_character_boxes(regions: List[Dict], gray: np.ndarray, char_w_est: int, char_h_est: int) -> List[Dict]:
-    """
-    Anti-Merge Precision Engine:
-    Detects abnormally wide bounding boxes where two adjacent characters were fused into one.
-    Uses vertical projection profiling across the central 32% - 68% of the box to locate the
-    stroke separation valley, and splits the box into two clean character regions.
-    """
-    if not regions or char_w_est <= 0:
-        return regions
-
-    result = []
-    split_count = 0
-    img_h, img_w = gray.shape[:2]
-
-    for r in regions:
-        bw = r["w"]
-        bh = r["h"]
-        asp = bw / float(max(1, bh))
-
-        # Check if box is suspiciously wide (e.g. 2 merged Tamil letters):
-        # A standard Tamil character has aspect ratio 0.60 - 1.15.
-        # If aspect >= 1.28 AND width >= int(char_w_est * 1.35) and bw >= 20:
-        if asp >= 1.28 and bw >= int(char_w_est * 1.35) and bw >= 20:
-            rx, ry = r["x"], r["y"]
-            crop_gray = gray[max(0, ry):min(img_h, ry + bh), max(0, rx):min(img_w, rx + bw)]
-            
-            if crop_gray.shape[0] >= 10 and crop_gray.shape[1] >= 20:
-                clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(max(2, crop_gray.shape[1] // 8), max(2, crop_gray.shape[0] // 8)))
-                enhanced = clahe.apply(crop_gray)
-                blurred = cv2.GaussianBlur(enhanced, (3, 3), 0)
-                
-                # Try dual polarity Otsu to get best foreground ink
-                _, bin_inv = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-                _, bin_norm = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                
-                # Pick polarity with reasonable ink density (between 10% and 70%)
-                ink_inv_ratio = np.mean(bin_inv > 0)
-                binary = bin_inv if 0.10 <= ink_inv_ratio <= 0.70 else bin_norm
-                
-                # Compute vertical projection profile (ink sum per column)
-                col_sums = np.sum(binary > 0, axis=0).astype(np.float32)
-                
-                # Smooth profile to avoid local stroke noise
-                ksize = max(3, bw // 15)
-                if ksize % 2 == 0:
-                    ksize += 1
-                col_smooth = cv2.GaussianBlur(col_sums.reshape(1, -1), (ksize, 1), 0).flatten()
-                
-                # Search strictly in the central 32% - 68% range of width
-                s_min = int(bw * 0.32)
-                s_max = int(bw * 0.68)
-                
-                if s_max > s_min + 3:
-                    valley_idx = int(np.argmin(col_smooth[s_min:s_max])) + s_min
-                    valley_val = col_smooth[valley_idx]
-                    
-                    left_peak = np.max(col_smooth[:valley_idx]) if valley_idx > 0 else 1.0
-                    right_peak = np.max(col_smooth[valley_idx:]) if valley_idx < bw else 1.0
-                    peak_min = min(left_peak, right_peak)
-                    
-                    # If valley is significantly lower than both peaks (clear stroke separation)
-                    if peak_min > 0 and (valley_val <= 0.68 * peak_min or valley_val == 0):
-                        split_count += 1
-                        print(f"[SEG-SPLIT] Anti-Merge: Successfully split merged box (w={bw}, ar={asp:.2f}) "
-                              f"at valley x={valley_idx} (valley={valley_val:.1f} vs peak={peak_min:.1f})")
-                        r1 = dict(r)
-                        r1["w"] = valley_idx
-                        
-                        r2 = dict(r)
-                        r2["x"] = rx + valley_idx
-                        r2["w"] = bw - valley_idx
-                        
-                        result.append(r1)
-                        result.append(r2)
-                        continue
-
-        result.append(r)
-
-    if split_count > 0:
-        print(f"[SEG-SPLIT] Anti-Merge Engine divided {split_count} fused character boxes into distinct characters.")
-    return result
-
-
-def _fuse_split_character_fragments(regions: List[Dict], char_w_est: int, char_h_est: int) -> List[Dict]:
-    """
-    Anti-Split Precision Engine:
-    Identifies fragmented, over-segmented sub-character components (such as disconnected loops
-    or kombu vowel modifiers) and fuses them into unified character bounding boxes.
-    CRITICAL: Never merges two normal-sized independent characters!
-    """
-    if len(regions) < 2 or char_w_est <= 0:
-        return regions
-
-    fused = []
-    i = 0
-    fuse_count = 0
-    while i < len(regions):
-        curr = regions[i]
-        merged = False
-        
-        if i + 1 < len(regions):
-            nxt = regions[i + 1]
-            
-            # Must be on the exact same text line
-            if curr.get("line", 1) == nxt.get("line", 1):
-                curr_right = curr["x"] + curr["w"]
-                nxt_left = nxt["x"]
-                gap_x = nxt_left - curr_right
-                
-                curr_yc = curr.get("yc", curr["y"] + curr["h"] / 2.0)
-                nxt_yc = nxt.get("yc", nxt["y"] + nxt["h"] / 2.0)
-                vert_aligned = abs(curr_yc - nxt_yc) <= (char_h_est * 0.40)
-                
-                # Check if one of the boxes is an abnormally narrow sub-glyph fragment:
-                # e.g., a kombu 'ெ' (w < 0.48 * char_w_est) or a disconnected loop
-                is_sub_fragment = (curr["w"] < char_w_est * 0.48) or (nxt["w"] < char_w_est * 0.48)
-                
-                # Check if they substantially overlap in X (e.g. virama / pulli above a consonant)
-                is_x_overlap = (gap_x < 0) and (abs(gap_x) > min(curr["w"], nxt["w"]) * 0.25)
-                
-                # Combined bounding dimensions
-                mx1 = min(curr["x"], nxt["x"])
-                my1 = min(curr["y"], nxt["y"])
-                mx2 = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"])
-                my2 = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"])
-                combined_w = mx2 - mx1
-                combined_h = my2 - my1
-                
-                # Safety constraint: The merged box MUST NOT exceed a single character's valid width
-                # A single Tamil character (including compound glyph like 'கொ' or 'கா') is at most 1.35 * char_w_est
-                is_valid_single_char_width = combined_w <= int(char_w_est * 1.35)
-                
-                # Touching / tight proximity condition
-                is_tight_proximity = gap_x <= max(4, int(char_w_est * 0.15))
-                
-                # Only fuse if:
-                # 1. At least one box is a fragment OR they overlap in X, AND
-                # 2. Combined width is within single-character limit, AND
-                # 3. Vertically aligned, AND
-                # 4. Tight proximity
-                if vert_aligned and is_valid_single_char_width and (is_sub_fragment or is_x_overlap) and is_tight_proximity:
-                    fused_box = {
-                        "x": mx1,
-                        "y": my1,
-                        "w": combined_w,
-                        "h": combined_h,
-                        "line": curr.get("line", 1),
-                        "yc": my1 + combined_h / 2.0
-                    }
-                    fused.append(fused_box)
-                    fuse_count += 1
-                    i += 2  # Consumed both boxes
-                    merged = True
-                    print(f"[SEG-FUSE] Anti-Split: Fused fragmented boxes into unified character: w={combined_w}px (median={char_w_est}px)")
-                    continue
-                    
-        if not merged:
-            fused.append(curr)
-            i += 1
-
-    if fuse_count > 0:
-        print(f"[SEG-FUSE] Anti-Split Engine successfully stitched {fuse_count} fragmented characters.")
-    return fused
-
-
-# ---------------------------------------------
 #  Per-Line Band Detection Helper
 # ---------------------------------------------
 
@@ -1101,25 +932,26 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
     # SMART HYBRID MODE (YOLO + OpenCV Precision)
     # =========================================================================
     if mode == "smart" and _YOLO_MODEL is not None:
-        print("[SEG] Running SMART HYBRID mode (Scale-Normalized YOLO Tiled Inference)")
+        print("[SEG] Running SMART HYBRID mode (YOLO Tiled Inference)")
         
-        # Run inference directly on the scale-normalized 'work' image!
-        # Small images are upscaled to >=450px line height and 4K images are normalized to <=2000px width.
-        # This guarantees individual characters are ALWAYS in the canonical sweet spot (~160px - 220px).
-        h, w = work.shape[:2]
+        h, w = image_bgr.shape[:2]
         yolo_boxes = []
         yolo_scores = []
         
+        # TILE_SIZE = 640 matches YOLO's trained imgsz=640 exactly.
+        # Running inference at the same resolution the model was trained on
+        # ensures anchor boxes and receptive fields align with learned features.
         TILE_SIZE = 640
-        # 60% overlap ensures every character is fully interior in at least one tile
+        # For wide horizontal crops, use dense 75% overlap so every character
+        # appears near the center of at least 2–3 separate tiles.
         if w > 1200 or (w / max(1, h)) > 4.0:
-            OVERLAP = int(TILE_SIZE * 0.75)   # 480px overlap for wide strips
+            OVERLAP = int(TILE_SIZE * 0.75)   # 480px overlap, 160px step
             print(f"[SEG] Wide crop detected ({w}x{h}). Using Dense 75% Sliding Window (OVERLAP={OVERLAP}px)...")
         else:
-            OVERLAP = int(TILE_SIZE * 0.60)   # 384px overlap, 256px step
-            print(f"[SEG] Slicing {w}x{h} normalized work image into {TILE_SIZE}x{TILE_SIZE} tiles with {OVERLAP}px overlap...")
+            OVERLAP = int(TILE_SIZE * 0.50)   # 320px overlap, 320px step
 
-        # Sliced Inference on scale-normalized work image
+        # Sliced Inference (just like training data!)
+        print(f"[SEG] Slicing {w}x{h} image into {TILE_SIZE}x{TILE_SIZE} tiles with {OVERLAP}px overlap...")
         for y in range(0, max(1, h), max(1, TILE_SIZE - OVERLAP)):
             for x in range(0, max(1, w), max(1, TILE_SIZE - OVERLAP)):
                 y2 = min(y + TILE_SIZE, h)
@@ -1130,26 +962,17 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                 if y1 >= y2 or x1 >= x2:
                     continue
                     
-                tile = work[y1:y2, x1:x2]
+                tile = image_bgr[y1:y2, x1:x2]
                 with torch.inference_mode():
+                    # Confidence Cascade: use low conf=0.15 to catch faint/eroded characters.
+                    # False positives are eliminated downstream by the 247-class classifier
+                    # verification + stone crack/blank elimination filters.
                     results = _YOLO_MODEL(tile, conf=0.15, iou=0.55, augment=False, verbose=False)
                 boxes = results[0].boxes.xyxy.cpu().numpy()
                 confs = results[0].boxes.conf.cpu().numpy()
                 
                 for i in range(len(boxes)):
                     box = boxes[i]
-                    
-                    # Halo Boundary Exclusion:
-                    # If a detection touches the outer border (<= 4px) of the tile,
-                    # and the tile is not at the boundary of the image, skip it
-                    # because the overlapping adjacent tile contains the complete, centered character!
-                    is_cut_left = (box[0] <= 4) and (x1 > 0)
-                    is_cut_right = (box[2] >= TILE_SIZE - 4) and (x2 < w)
-                    is_cut_top = (box[1] <= 4) and (y1 > 0)
-                    is_cut_bottom = (box[3] >= TILE_SIZE - 4) and (y2 < h)
-                    if is_cut_left or is_cut_right or is_cut_top or is_cut_bottom:
-                        continue
-
                     bx = int(box[0] + x1)
                     by = int(box[1] + y1)
                     bw = int(box[2] - box[0])
@@ -1215,11 +1038,16 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
         if len(yolo_boxes) == 0:
             print("[SEG] YOLO found no boxes, falling back to Classic mode.")
         else:
-            print(f"[SEG] Found {len(yolo_boxes)} total raw YOLO boxes in work resolution.")
+            print(f"[SEG] Found {len(yolo_boxes)} total raw YOLO boxes. Mapping to work resolution.")
             regions = []
             for box in yolo_boxes:
-                # YOLO boxes are ALREADY in work resolution
-                x1_work, y1_work, x2_work, y2_work = [int(v) for v in box]
+                # YOLO boxes are in original resolution. We need them in work resolution.
+                x1_orig, y1_orig, x2_orig, y2_orig = [int(v) for v in box]
+                x1_work = int(x1_orig / sx)
+                y1_work = int(y1_orig / sy)
+                x2_work = int(x2_orig / sx)
+                y2_work = int(y2_orig / sy)
+                
                 w_work = x2_work - x1_work
                 h_work = y2_work - y1_work
                 
@@ -1281,15 +1109,15 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
                         print(f"[SEG] Rejecting crack/blank box at x={r['x']}, y={r['y']}")
                         continue
 
-                    # Reject top margin hallucination boxes near extreme top edge (y <= 5px or y <= 5% height)
-                    is_top_margin = r["y"] <= max(6, int(work_h * 0.05))
-                    if is_top_margin and r["h"] < (char_h_est * 0.70):
-                        print(f"[SEG] Rejecting top margin hallucination box: y={r['y']}, h={r['h']} (median_h={char_h_est})")
+                    # Reject partial edge slivers near extreme top edge (only if abnormally thin, < 25% height)
+                    is_top_margin = r["y"] <= max(4, int(work_h * 0.03))
+                    if is_top_margin and r["h"] < (char_h_est * 0.25):
+                        print(f"[SEG] Rejecting top margin sliver: y={r['y']}, h={r['h']} (median_h={char_h_est})")
                         continue
 
-                    # Absolute noise check
-                    if r["h"] < 12 or r["w"] < 8:
-                        print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']}")
+                    # Absolute noise check: remove stray floating specks (< 35% char height or < 25% char width)
+                    if r["h"] < max(16, int(char_h_est * 0.35)) or r["w"] < max(10, int(char_w_est * 0.25)):
+                        print(f"[SEG] Rejecting tiny noise speck: w={r['w']}, h={r['h']} (median_h={char_h_est})")
                         continue
                         
                     filtered_regions.append(r)
@@ -1417,16 +1245,6 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
         print("[SEG] WARNING: No regions detected. Returning empty list.")
         return []
 
-    # Estimate working character dimensions
-    widths = sorted([r["w"] for r in regions])
-    heights = sorted([r["h"] for r in regions])
-    char_w_est = widths[len(widths) // 2] if widths else max(15, work_w // 30)
-    median_h = heights[len(heights) // 2] if heights else char_h_est
-
-    # ── STEP 9.6: Anti-Merge Precision Engine (Pass 1 - Pre-Clustering) ───────
-    # Split any multi-character merged box using vertical projection valley detection
-    regions = _split_merged_character_boxes(regions, gray, char_w_est, median_h)
-
     # -- STEP 10: Cluster into lines -------------------------------------------
     # For Tamil script, characters can have tall ascenders or long descenders.
     # We sort by center Y and use a large line_gap tolerance (90% of median height)
@@ -1439,7 +1257,7 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
     # Use median box height to compute a robust line gap threshold
     heights = sorted([r["h"] for r in regions])
     median_h = heights[len(heights) // 2] if heights else char_h_est
-    line_gap = max(params["line_gap"], int(median_h * 0.9)) # Robust line gap
+    line_gap = max(params["line_gap"], int(median_h * 0.9)) # Increased to 0.9 for robustness
     if len(regions) < 10:
         line_gap = max(line_gap, work_h // 8)
     print(f"[SEG] Line gap: {line_gap}px  (median_h={median_h}px)")
@@ -1475,21 +1293,86 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
     if surviving_regions:
         regions = surviving_regions
 
-    # -- STEP 11: Sort by line then x + Anti-Split & Anti-Merge Precision ─────
+    # -- STEP 10.8: Anti-Merge Engine (Vertical Projection Valley Splitter) ----
+    # When two characters touch on stone or in low resolution, YOLO or OpenCV draws
+    # one wide box spanning both. We find the vertical ink valley and split them.
+    split_regions = []
+    for r in regions:
+        bw, bh = r["w"], r["h"]
+        asp = bw / float(max(1, bh))
+        if (asp > 1.30 or bw > int(char_w_est * 1.38)) and bw > 24:
+            crop_g = gray[r["y"]:r["y"]+bh, r["x"]:r["x"]+bw]
+            if crop_g.size > 0:
+                clahe_split = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
+                enh_split = clahe_split.apply(crop_g)
+                _, bin_inv = cv2.threshold(enh_split, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+                col_sums = np.sum(bin_inv > 0, axis=0).astype(np.float32)
+                col_smooth = cv2.GaussianBlur(col_sums.reshape(1, -1), (5, 1), 0).flatten()
+                
+                s_start = int(bw * 0.32)
+                s_end = int(bw * 0.68)
+                if s_end > s_start:
+                    val_idx = int(np.argmin(col_smooth[s_start:s_end]))
+                    split_pt = s_start + val_idx
+                    l_peak = float(np.max(col_smooth[:split_pt])) if split_pt > 0 else 1.0
+                    r_peak = float(np.max(col_smooth[split_pt:])) if split_pt < bw else 1.0
+                    val_v = float(col_smooth[split_pt])
+                    
+                    if val_v <= 0.65 * min(l_peak, r_peak) and split_pt >= 10 and (bw - split_pt) >= 10:
+                        b1 = dict(r)
+                        b1["w"] = split_pt
+                        b2 = dict(r)
+                        b2["x"] = r["x"] + split_pt
+                        b2["w"] = bw - split_pt
+                        print(f"[SEG-SPLIT] Separated merged box at x={r['x']}: w={bw} -> {b1['w']}+{b2['w']}")
+                        split_regions.extend([b1, b2])
+                        continue
+        split_regions.append(r)
+    regions = split_regions
+
+    # -- STEP 11: Sort by line then x + Anti-Split Sub-Glyph Fragment Fusion ───
     regions.sort(key=lambda r: (r["line"], r["x"]))
+    
+    # Strictly merge ONLY if one of the boxes is an incomplete sub-glyph fragment
+    # (e.g. detached kombu 'ெ' or modifier loop < 45% median width)
+    # NEVER merge two already full-sized adjacent characters!
+    merged_regions = []
+    i = 0
+    while i < len(regions):
+        curr = regions[i]
+        while i < len(regions) - 1:
+            nxt = regions[i + 1]
+            if curr.get("line", 1) == nxt.get("line", 1):
+                curr_right = curr["x"] + curr["w"]
+                nxt_left = nxt["x"]
+                gap_x = nxt_left - curr_right
+                
+                # Check if one of them is an incomplete fragment
+                is_fragment = (curr["w"] < int(char_w_est * 0.48)) or (nxt["w"] < int(char_w_est * 0.48))
+                
+                mx1 = min(curr["x"], nxt["x"])
+                my1 = min(curr["y"], nxt["y"])
+                mx2 = max(curr["x"] + curr["w"], nxt["x"] + nxt["w"])
+                my2 = max(curr["y"] + curr["h"], nxt["y"] + nxt["h"])
+                merged_w = mx2 - mx1
+                merged_h = my2 - my1
+                
+                # Only fuse if one is a fragment, gap is small (<= 6px), and combined width is a normal single letter
+                if is_fragment and gap_x <= max(5, int(char_w_est * 0.15)) and merged_w <= int(char_w_est * 1.30):
+                    curr = {"x": mx1, "y": my1, "w": merged_w, "h": merged_h, "line": curr.get("line", 1)}
+                    i += 1
+                    print(f"[SEG-FUSE] Fused sub-glyph fragment into complete character: w={merged_w}")
+                    continue
+            break
+        merged_regions.append(curr)
+        i += 1
 
-    # 1. Anti-Split Engine: Fuse genuine sub-glyph fragments (kombu, loops) without merging separate letters
-    regions = _fuse_split_character_fragments(regions, char_w_est, median_h)
+    regions = merged_regions
 
-    # 2. Anti-Merge Engine (Pass 2): Final check to guarantee no merged box escaped
-    regions = _split_merged_character_boxes(regions, gray, char_w_est, median_h)
-
-    # Final sort and index
-    regions.sort(key=lambda r: (r["line"], r["x"]))
     for i, r in enumerate(regions):
         r["_id"] = i + 1
 
-    # -- STEP 12: Build output + debug visualisation ---------------------------
+    # -- STEP 12: Build output + debug visualisation with 5% Adaptive Padding --
     LINE_COLORS = [
         (0,   0,   255), (0,   200,   0), (255,   0,   0),
         (0,   200, 200), (200,   0, 200), (0,   165, 255),
@@ -1510,18 +1393,24 @@ def _segment_words_core(image_bgr: np.ndarray, mode: str = "smart", merge_gap_x:
         ow = int(rw * sx)
         oh = int(rh * sy)
 
-        x1 = max(0, ox)
-        y1 = max(0, oy)
-        x2 = min(orig_w, ox + ow)
-        y2 = min(orig_h, oy + oh)
+        # 5% adaptive breathing margin so character top loops and curved terminals are never clipped
+        pad_x = max(2, int(ow * 0.05))
+        pad_y = max(3, int(oh * 0.06))
+
+        x1 = max(0, ox - pad_x)
+        y1 = max(0, oy - pad_y)
+        x2 = min(orig_w, ox + ow + pad_x)
+        y2 = min(orig_h, oy + oh + pad_y)
+        final_w = x2 - x1
+        final_h = y2 - y1
         crop = orig[y1:y2, x1:x2]
 
         output.append({
             "id":   rid,
-            "x":    ox,
-            "y":    oy,
-            "w":    ow,
-            "h":    oh,
+            "x":    x1,
+            "y":    y1,
+            "w":    final_w,
+            "h":    final_h,
             "line": r["line"],
             "crop": crop,
         })
